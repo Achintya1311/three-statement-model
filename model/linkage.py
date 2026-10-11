@@ -190,6 +190,12 @@ def forecast_full_linkage(
     amortization_rate: float | None = None,
     revolver_limit: float | None = None,
     interest_rate: float | None = None,
+    domestic_growth: float | None = None,
+    export_growth: float | None = None,
+    ebitda_margin: float | None = None,
+    da_margin: float | None = None,
+    capex_margin: float | None = None,
+    nwc_margin: float | None = None,
     circular: bool = True,
     trailing_years: int = DEFAULT_TRAILING_YEARS,
     balance_tolerance: float = DEFAULT_BALANCE_TOLERANCE,
@@ -204,6 +210,17 @@ def forecast_full_linkage(
     re-implemented) and Day 4's debt schedule, called one year at a time so
     this module's own tax-vs-interest circularity (see module docstring)
     can be resolved before the next year's opening balances are fixed.
+
+    ``domestic_growth``/``export_growth`` and the four margin overrides pass
+    straight through to Day 2's ``forecast_revenue`` and Day 3's
+    ``forecast_schedule`` — the same override-the-driver flags those CLIs
+    already expose individually (``model.revenue``, ``model.costs``), not
+    re-derived here. Day 6's Excel export computes these two forecasts
+    directly for the same reason (non-circular scope); Day 7's sensitivity
+    CLI is the first caller that needs to swing them through the full
+    circular linkage, which is why this function gained them rather than
+    each caller reaching into ``model.revenue_driver``/``model.schedules``
+    itself.
     """
     if not statements:
         raise ValueError("need at least one historical statement")
@@ -213,8 +230,18 @@ def forecast_full_linkage(
     historical_linkage = build_historical_linkage(statements)
     historical_debt = build_historical_debt_schedule(statements)
     schedule = build_schedule(statements)
-    revenue_forecasts = forecast_revenue(segments, forecast_years)
-    cost_forecasts = forecast_schedule(schedule, revenue_forecasts, trailing_years=trailing_years)
+    revenue_forecasts = forecast_revenue(
+        segments, forecast_years, domestic_growth=domestic_growth, export_growth=export_growth
+    )
+    cost_forecasts = forecast_schedule(
+        schedule,
+        revenue_forecasts,
+        ebitda_margin=ebitda_margin,
+        da_margin=da_margin,
+        capex_margin=capex_margin,
+        nwc_margin=nwc_margin,
+        trailing_years=trailing_years,
+    )
 
     used_amortization_rate = amortization_rate if amortization_rate is not None else DEFAULT_AMORTIZATION_RATE
     used_revolver_limit = (
