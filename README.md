@@ -34,6 +34,13 @@ uv pip install -r requirements.txt
 # data/<ticker>/financials.csv.
 python -m model.ingest --ticker GULFOILLUB
 
+# Day 2: driver-based revenue build (model/revenue_driver.py) - domestic vs.
+# export revenue reconciled against the Day 1 fixture, each segment's own
+# historical CAGR, and a forward forecast using each segment's own growth
+# rate (overridable per segment).
+python -m model.revenue --ticker GULFOILLUB
+python -m model.revenue --ticker GULFOILLUB --forecast-years 3 --domestic-growth 0.10 --export-growth 0.15
+
 python -m model.build --ticker EXAMPLE.NS --years 5 --export outputs/model.xlsx
 ```
 
@@ -49,6 +56,12 @@ Runs offline against committed fixtures by default. Live data needs a key in `.e
 
 20/20 tests pass (`tests/test_historical.py`): CSV structure/duplicate-year/non-numeric rejection, both identity checks against synthetic broken rows and the real fixture, the normalized dataclasses' derived properties (EBIT margin, net margin, net debt), and the CLI's success, missing-file, and identity-failure paths, all run against the real committed fixture as well as synthetic cases. `python -m model.ingest --ticker GULFOILLUB` and `--ticker NOPE` (the missing-data path) were both run by hand.
 
+**Day 2 - driver-based revenue build.** Checked what Gulf Oil Lubricants India actually discloses before picking a driver, rather than assuming the "units x price" shape `NEXT_STEPS.md` suggests for a lubricants company. Searched all ten annual reports' text: no absolute sales volume (KL/litres/MT) is disclosed anywhere, only qualitative commentary ("volume growth 2-3x industry"), and the Ind AS 108 segment note states the Company has one reportable segment, "Lubricants" - there is no automotive/industrial or B2B/B2C revenue split in the audited statements either. A true units x price build cannot be done honestly here without inventing a volume base number, which this repo will not do - exactly the trap `NEXT_STEPS.md` names ("segment disclosure in Indian filings is often coarser than the driver build wants").
+
+What every annual report *does* disclose, every year, is a mandatory geographic revenue split (India vs. Outside India). `model/revenue_driver.py` uses that as the real driver: `data/GULFOILLUB/segment_revenue.csv` sources `export_revenue` directly from each year's Note 37/38 (cited with PDF page numbers in `research/sources.md`), and domestic revenue is derived as `financials.csv`'s total revenue minus export revenue - not stored as a second number that could drift out of sync. Domestic and export revenue are then each modeled on their own historical CAGR (domestic +13.93%, export +34.21%, FY2014-15 to FY2023-24) and forecast forward independently, rather than one blended top-line growth percentage typed into a single cell. Export has grown from 1.47% of revenue in FY2014-15 to 6.14% by FY2023-24 - a real, structurally distinct trend this split actually captures that a single growth rate would average away.
+
+26/26 new tests pass (`tests/test_revenue_driver.py`, 46/46 total): fiscal-year label arithmetic, CSV structure/duplicate rejection, the domestic+export-equals-total reconciliation against the real fixture (the core correctness check - every one of the 10 years sums exactly, and FY2016-17/FY2017-18's derived domestic figure independently reproduces the segment note's own reported "India" line to the rupee despite that note's total being gross of excise duty those two years), fiscal-year-mismatch and out-of-range sanity checks, segment CAGR and forecast math against hand-computed values, and the CLI's success, override, and three error paths (missing financials file, missing segment file, reconciliation failure), all run against the real committed fixtures. `python -m model.revenue --ticker GULFOILLUB` (default and with `--forecast-years`/growth overrides) and the `--ticker NOPE` missing-data path were both run by hand.
+
 ## Checkpoint log
 
 <!-- CHECKPOINTS:START -->
@@ -60,7 +73,8 @@ Runs offline against committed fixtures by default. Live data needs a key in `.e
 ## Limitations and what would make me wrong
 
 - A forecast is a set of assumptions, not a prediction. The sensitivity tables show which two assumptions actually move the answer.
-- Segment disclosure in Indian filings is often coarser than the driver build wants, so some drivers are estimated and flagged.
+- Segment disclosure in Indian filings is often coarser than the driver build wants, so some drivers are estimated and flagged. Concretely for Gulf Oil Lubricants India: no annual report discloses an absolute sales volume figure (KL/litres/MT), only qualitative volume-growth commentary, and the Ind AS 108 segment note reports a single "Lubricants" segment with no automotive/industrial or B2B/B2C revenue split. `model/revenue_driver.py`'s domestic-vs-export driver is the real substitute - the one quantitative, decomposable split the filings actually give every year - not a units x price build.
+- The domestic/export split's historical CAGRs (`model.revenue_driver.segment_cagr`) are extrapolations of a 9-year trend, most pronounced for export (+34.21% CAGR off a small base, now ~6% of revenue). Naively compounding that rate for many years would make exports an implausibly large share of revenue; `model/revenue.py --export-growth` exists precisely so a later day's full build can override it with a decelerating or capped assumption instead of trusting the historical CAGR forever.
 - Corporate actions during the forecast window would change the share count; the equity roll-forward handles the disclosed ones only.
 - `data/GULFOILLUB/financials.csv` is reused from reverse-dcf-engine's own transcription (see `research/sources.md`), not independently re-sourced. It carries no balance-sheet liabilities/equity breakdown and no full cash-flow statement - `model.historical.BalanceSheetSummary` and `CashFlowSummary` only expose the fields the source data actually has (`total_assets`/`total_debt`/`cash_and_equivalents`/`net_working_capital`, and `capex`/D&A respectively). Day 5's full linkage and balance-check assertion will need a second transcription pass for the missing granularity, or an explicit documented plug policy - neither exists yet.
 - The two Day 1 identity checks (`ebitda - D&A == ebit`, `ebit - interest - tax == net_profit`) are tautologies by construction, since reverse-dcf-engine derived those columns that way from two reported numbers in the first place. Passing them confirms the copy wasn't corrupted; it is not independent evidence the ten years of hand-transcribed figures are correct against the original filings - that assurance is only as strong as reverse-dcf-engine's own citation ledger.
