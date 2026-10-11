@@ -41,6 +41,13 @@ python -m model.ingest --ticker GULFOILLUB
 python -m model.revenue --ticker GULFOILLUB
 python -m model.revenue --ticker GULFOILLUB --forecast-years 3 --domestic-growth 0.10 --export-growth 0.15
 
+# Day 3: cost structure, D&A, capex and working-capital schedules
+# (model/schedules.py) - each expressed as a margin of revenue, defaulting to
+# a trailing historical average (overridable), chained onto Day 2's revenue
+# forecast rather than re-deriving one.
+python -m model.costs --ticker GULFOILLUB
+python -m model.costs --ticker GULFOILLUB --forecast-years 3 --ebitda-margin 0.15 --capex-margin 0.02
+
 python -m model.build --ticker EXAMPLE.NS --years 5 --export outputs/model.xlsx
 ```
 
@@ -62,6 +69,10 @@ What every annual report *does* disclose, every year, is a mandatory geographic 
 
 26/26 new tests pass (`tests/test_revenue_driver.py`, 46/46 total): fiscal-year label arithmetic, CSV structure/duplicate rejection, the domestic+export-equals-total reconciliation against the real fixture (the core correctness check - every one of the 10 years sums exactly, and FY2016-17/FY2017-18's derived domestic figure independently reproduces the segment note's own reported "India" line to the rupee despite that note's total being gross of excise duty those two years), fiscal-year-mismatch and out-of-range sanity checks, segment CAGR and forecast math against hand-computed values, and the CLI's success, override, and three error paths (missing financials file, missing segment file, reconciliation failure), all run against the real committed fixtures. `python -m model.revenue --ticker GULFOILLUB` (default and with `--forecast-years`/growth overrides) and the `--ticker NOPE` missing-data path were both run by hand.
 
+**Day 3 - cost structure, D&A, capex and working-capital schedules.** The data has no cost-by-nature breakdown (no cost of materials consumed, employee benefit expense, or other expenses line) and no PP&E gross block, so the cost structure uses the only honest aggregate available: EBITDA margin, not a bottom-up build - the same kind of disclosure gap Day 2 hit for segment volumes, handled the same way (pick the real driver the filings support, don't invent the one they don't). `model/schedules.py` expresses all four Day 3 schedules as margins of revenue, built straight off the already-ingested `HistoricalStatement`s. D&A is driven by revenue, not capex: checked by hand before picking the driver, D&A/capex swings 13%-394% across the ten historical years because D&A depreciates an accumulating gross block this data doesn't carry, while D&A/revenue drifts smoothly 0.50% -> 2.05% over the same span. Capex/revenue is genuinely lumpy (0.52%-8.10%, driven by discrete capacity expansions, e.g. FY2017-18's 8.10%) and NWC/revenue ranges 8.11%-23.66% with a level shift after FY2016-17 - both left lumpy rather than smoothed into a trend that isn't really there. Every margin defaults to a 3-year trailing average (overridable individually via `--ebitda-margin`/`--da-margin`/`--capex-margin`/`--nwc-margin`), picked over a single last year because capex especially is too noisy for one year to be a representative assumption. `model/costs.py`'s forecast chains directly onto Day 2's `forecast_revenue` output rather than re-deriving a revenue number, and also reports `delta_nwc`, the year-over-year change in working capital Day 5's cash-flow statement will need.
+
+19/19 new tests pass (`tests/test_schedules.py`, 65/65 total): the historical schedule against hand-computed margins for the real fixture, the trailing-average helper's edge cases, forecast math against both default-margin and explicit-override cases, `delta_nwc` chaining across two forecast years, the Day 2 -> Day 3 revenue-forecast integration, and the CLI's success, zero-forecast, two missing-file, and override paths. `python -m model.costs --ticker GULFOILLUB` (default, with `--forecast-years 0`, and with all four margin overrides) and the `--ticker NOPE` missing-data path were all run by hand.
+
 ## Checkpoint log
 
 <!-- CHECKPOINTS:START -->
@@ -79,6 +90,7 @@ What every annual report *does* disclose, every year, is a mandatory geographic 
 - Corporate actions during the forecast window would change the share count; the equity roll-forward handles the disclosed ones only.
 - `data/GULFOILLUB/financials.csv` is reused from reverse-dcf-engine's own transcription (see `research/sources.md`), not independently re-sourced. It carries no balance-sheet liabilities/equity breakdown and no full cash-flow statement - `model.historical.BalanceSheetSummary` and `CashFlowSummary` only expose the fields the source data actually has (`total_assets`/`total_debt`/`cash_and_equivalents`/`net_working_capital`, and `capex`/D&A respectively). Day 5's full linkage and balance-check assertion will need a second transcription pass for the missing granularity, or an explicit documented plug policy - neither exists yet.
 - The two Day 1 identity checks (`ebitda - D&A == ebit`, `ebit - interest - tax == net_profit`) are tautologies by construction, since reverse-dcf-engine derived those columns that way from two reported numbers in the first place. Passing them confirms the copy wasn't corrupted; it is not independent evidence the ten years of hand-transcribed figures are correct against the original filings - that assurance is only as strong as reverse-dcf-engine's own citation ledger.
+- `model/schedules.py`'s cost structure is EBITDA margin only - there is no cost-of-materials/employee-cost/other-expense breakdown in the source data to build a bottom-up cost structure from. D&A is modeled as a margin of revenue rather than of capex specifically because D&A/capex is not stable here (13%-394% across the ten historical years) without a PP&E gross block this data doesn't carry. Capex/revenue (0.52%-8.10%) and NWC/revenue (8.11%-23.66%, with a level shift after FY2016-17) are both genuinely lumpy, not smoothly trending; the default 3-year trailing average is a deliberate smoothing choice, not a claim that the lumpiness is noise - a future capacity expansion like FY2017-18's would push realized capex well above what `model/costs.py`'s trailing average projects.
 
 ## Where this sits
 
