@@ -438,3 +438,37 @@ def assert_balance_sheet_balances(
             for f, diff in failures
         )
         raise AssertionError(f"balance sheet does not balance for every forecast year: {detail}")
+
+
+def to_fundamentals_contract(
+    statements: list[HistoricalStatement], forecasts: list[ForecastLinkageYear]
+) -> dict:
+    """The ``fundamentals`` block this repo publishes to the spine (v0.8):
+    FY3 revenue CAGR off the last historical year, FY3 EBIT margin, FY3 net
+    debt/EBITDA, and whether the balance check
+    (:func:`assert_balance_sheet_balances`) passed for every forecast year —
+    the exact shape ``NEXT_STEPS.md`` committed to before this function
+    existed. Requires at least 3 forecast years; the CLI's own
+    ``--forecast-years`` default already satisfies this.
+    """
+    if not statements:
+        raise ValueError("need at least one historical statement for the base-year revenue")
+    if len(forecasts) < 3:
+        raise ValueError(f"fy3 contract needs at least 3 forecast years, got {len(forecasts)}")
+
+    base_revenue = statements[-1].income.revenue
+    fy3 = forecasts[2]
+    try:
+        assert_balance_sheet_balances(forecasts)
+        balance_check = "passed"
+    except AssertionError:
+        balance_check = "failed"
+
+    return {
+        "fundamentals": {
+            "fy3_revenue_cagr": (fy3.revenue / base_revenue) ** (1 / 3) - 1,
+            "fy3_ebit_margin": fy3.ebit / fy3.revenue,
+            "net_debt_ebitda_fy3": (fy3.ending_total_debt - fy3.cash) / fy3.ebitda,
+            "balance_check": balance_check,
+        }
+    }

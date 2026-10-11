@@ -64,6 +64,10 @@ python -m model.statements --ticker GULFOILLUB
 python -m model.statements --ticker GULFOILLUB --forecast-years 3 --no-circular
 python -m model.statements --ticker GULFOILLUB --tax-rate 0.25 --dividend-payout 0.2
 
+# v0.8: write the fundamentals contract Stock Stalker reads (requires
+# --forecast-years >= 3 and a passing balance check) -- see "Where this sits"
+python -m model.statements --ticker GULFOILLUB --contract outputs/fundamentals_contract.json
+
 # Day 6: Excel export (model/excel_export.py, model/build.py) - writes an
 # .xlsx workbook with an Assumptions sheet (every rate/margin/limit, the
 # only place a number is typed in) and a Forecast sheet that is formulas
@@ -189,17 +193,22 @@ The worked numbers, `python -m model.revolver --ticker GULFOILLUB` (4y forecast,
 
 ## Where this sits
 
-Part of a nine-repo research pipeline. Stock Stalker screens the NSE universe; this repo publishes a versioned artifact it reads back:
+Part of a nine-repo research pipeline. Stock Stalker screens the NSE universe; this repo publishes a versioned artifact it reads back, written by `model.linkage.to_fundamentals_contract` and wired to `python -m model.statements --contract <path>` (requires `--forecast-years >= 3` and a passing balance check):
 
 ```json
 {
   "fundamentals": {
-    "fy3_revenue_cagr": 0.11,
-    "fy3_ebit_margin": 0.19,
+    "fy3_revenue_cagr": 0.1539,
+    "fy3_ebit_margin": 0.1282,
+    "net_debt_ebitda_fy3": -1.6879,
     "balance_check": "passed"
   }
 }
 ```
+
+These are the real numbers off the GULFOILLUB fixture's default 3-year forecast, not illustrative placeholders. `net_debt_ebitda_fy3` is negative because this company's modeled FY3 cash balance exceeds total debt — a net cash, not net debt, position, which is itself worth naming rather than smoothing over: the ratio is doing its job (nothing to lever against), not misbehaving.
+
+On the spine side, `stockstalker.gates.fundamentals` reads this file and attaches it to the one screen candidate whose ticker matches, the same non-match-by-default pattern as v0.7's reverse-dcf-engine integration — GULFOILLUB is not in Stock Stalker's 3-ticker fixture universe (RELIANCE/TATACHEM/CROMPTON), so the gate logic is proven against a synthetic contract keyed to a universe ticker; see that repo's own README for the real-data non-match.
 
 Communication is by file contract, not imports, so either side can be refactored without breaking the other.
 

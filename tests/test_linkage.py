@@ -4,6 +4,7 @@ linkage (to prove the assertion actually fails loudly), and the CLI end to
 end."""
 
 import dataclasses
+import json
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ from model.linkage import (
     default_tax_rate,
     forecast_full_linkage,
     forecast_linkage_from_cost_forecasts,
+    to_fundamentals_contract,
 )
 from model.revenue_driver import forecast_revenue, load_segment_revenue
 from model.schedules import build_schedule, forecast_schedule
@@ -225,6 +227,66 @@ def test_assert_balance_sheet_balances_passes_silently_when_everything_is_wired(
     assert assert_balance_sheet_balances(forecasts) is None
 
 
+# -- to_fundamentals_contract (v0.8) -----------------------------------------
+
+
+def test_to_fundamentals_contract_matches_the_committed_shape_on_the_real_fixture():
+    """The exact block shape NEXT_STEPS.md's v0.8 section committed to."""
+    statements_, segments = _real_inputs()
+    forecasts = forecast_full_linkage(statements_, segments, 3)
+
+    contract = to_fundamentals_contract(statements_, forecasts)
+
+    assert set(contract) == {"fundamentals"}
+    fundamentals = contract["fundamentals"]
+    assert set(fundamentals) == {
+        "fy3_revenue_cagr",
+        "fy3_ebit_margin",
+        "net_debt_ebitda_fy3",
+        "balance_check",
+    }
+    assert fundamentals["balance_check"] == "passed"
+    fy3 = forecasts[2]
+    base_revenue = statements_[-1].income.revenue
+    assert fundamentals["fy3_revenue_cagr"] == pytest.approx((fy3.revenue / base_revenue) ** (1 / 3) - 1)
+    assert fundamentals["fy3_ebit_margin"] == pytest.approx(fy3.ebit / fy3.revenue)
+    assert fundamentals["net_debt_ebitda_fy3"] == pytest.approx(
+        (fy3.ending_total_debt - fy3.cash) / fy3.ebitda
+    )
+
+
+def test_to_fundamentals_contract_rejects_fewer_than_three_forecast_years():
+    statements_, segments = _real_inputs()
+    forecasts = forecast_full_linkage(statements_, segments, 2)
+
+    with pytest.raises(ValueError, match="at least 3 forecast years"):
+        to_fundamentals_contract(statements_, forecasts)
+
+
+def test_to_fundamentals_contract_rejects_empty_statements():
+    statements_, segments = _real_inputs()
+    forecasts = forecast_full_linkage(statements_, segments, 3)
+
+    with pytest.raises(ValueError, match="at least one historical statement"):
+        to_fundamentals_contract([], forecasts)
+
+
+def test_to_fundamentals_contract_reports_a_failed_balance_check_without_raising():
+    """Mirrors test_assert_balance_sheet_balances_raises_loudly_on_a_broken_year's
+    synthetic break, but the contract function reports the honest result
+    instead of asserting -- the CLI's own balance-check gate (run before it
+    ever calls this function) is what actually stops a broken linkage from
+    publishing a contract."""
+    statements_, segments = _real_inputs()
+    forecasts = forecast_full_linkage(statements_, segments, 3)
+    broken_year = dataclasses.replace(forecasts[2], total_assets=forecasts[2].total_assets + 1000.0)
+    broken = [forecasts[0], forecasts[1], broken_year]
+
+    contract = to_fundamentals_contract(statements_, broken)
+
+    assert contract["fundamentals"]["balance_check"] == "failed"
+
+
 # -- CLI --------------------------------------------------------------------
 
 
@@ -346,3 +408,50 @@ def test_main_cli_end_to_end_against_the_real_fixtures(capsys):
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "balance check passed for every forecast year" in out
+
+
+def test_statements_cli_writes_fundamentals_contract(tmp_path, capsys):
+    """v0.8 integration: the CLI writes the fundamentals block as a JSON
+    file, never a Python import -- the same contract shape
+    to_fundamentals_contract tests above assert directly."""
+    contract_path = tmp_path / "contract.json"
+    exit_code = statements.run(
+        "GULFOILLUB",
+        GULFOILLUB_CSV,
+        SEGMENT_CSV,
+        forecast_years=3,
+        tax_rate=None,
+        dividend_payout=None,
+        amortization_rate=None,
+        revolver_limit=None,
+        interest_rate=None,
+        circular=True,
+        trailing_years=3,
+        contract_path=contract_path,
+    )
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert f"wrote fundamentals contract to {contract_path}" in out
+
+    contract = json.loads(contract_path.read_text())
+    assert set(contract["fundamentals"]) == {
+        "fy3_revenue_cagr",
+        "fy3_ebit_margin",
+        "net_debt_ebitda_fy3",
+        "balance_check",
+    }
+    assert contract["fundamentals"]["balance_check"] == "passed"
+
+
+def test_main_cli_writes_contract_end_to_end(tmp_path, capsys):
+    contract_path = tmp_path / "fundamentals.json"
+    exit_code = statements.main(["--ticker", "GULFOILLUB", "--contract", str(contract_path)])
+    assert exit_code == 0
+    assert contract_path.exists()
+    assert json.loads(contract_path.read_text())["fundamentals"]["balance_check"] == "passed"
+
+
+def test_main_cli_rejects_contract_with_too_few_forecast_years(capsys):
+    with pytest.raises(SystemExit):
+        statements.main(["--ticker", "GULFOILLUB", "--forecast-years", "2", "--contract", "out.json"])
+    assert "--forecast-years >= 3" in capsys.readouterr().err

@@ -15,6 +15,7 @@ offending years named on stderr, if any year fails to balance.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from model.linkage import (
     DEFAULT_DIVIDEND_PAYOUT,
     assert_balance_sheet_balances,
     forecast_full_linkage,
+    to_fundamentals_contract,
 )
 from model.revenue_driver import load_segment_revenue
 from model.schedules import DEFAULT_TRAILING_YEARS
@@ -51,6 +53,7 @@ def run(
     interest_rate: float | None,
     circular: bool,
     trailing_years: int,
+    contract_path: Path | None = None,
 ) -> int:
     if not financials_path.exists():
         print(f"no financials data at {financials_path}", file=sys.stderr)
@@ -119,6 +122,13 @@ def run(
         return 1
 
     print("\nbalance check passed for every forecast year: assets = liabilities + equity")
+
+    if contract_path is not None:
+        contract = to_fundamentals_contract(statements, forecasts)
+        contract_path.parent.mkdir(parents=True, exist_ok=True)
+        contract_path.write_text(json.dumps(contract, indent=2) + "\n")
+        print(f"\nwrote fundamentals contract to {contract_path}")
+
     return 0
 
 
@@ -154,7 +164,17 @@ def main(argv: list[str] | None = None) -> int:
         help="opening-balance interest, single pass, no iteration",
     )
     parser.set_defaults(circular=True)
+    parser.add_argument(
+        "--contract",
+        default=None,
+        help="write the v0.8 fundamentals contract block (see model.linkage.to_fundamentals_contract) as "
+        "JSON to this path, for the spine to read as a file -- never as a Python import. Requires "
+        "--forecast-years >= 3 and a passing balance check.",
+    )
     args = parser.parse_args(argv)
+
+    if args.contract and args.forecast_years < 3:
+        parser.error("--contract requires --forecast-years >= 3 (the fy3 contract needs a third forecast year)")
 
     financials_path = Path(args.financials) if args.financials else default_financials_path(args.ticker)
     segment_path = Path(args.segments) if args.segments else default_segment_path(args.ticker)
@@ -170,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
         args.interest_rate,
         args.circular,
         args.trailing_years,
+        Path(args.contract) if args.contract else None,
     )
 
 
