@@ -2,7 +2,7 @@
 
 A fully linked income statement, balance sheet and cash flow forecast built from the filings with no template underneath, where the balance check is a test that fails loudly.
 
-**Status:** Not started · Next: Day 1 - historical statement ingestion into normalized schema
+**Status:** Last checkpoint 2026-10-11 · Next: Day 2 - driver-based revenue build (units x price, or segment volumes, or stores x revenue per store), not a growth percentage typed into a cell
 
 ## What this is
 
@@ -54,6 +54,7 @@ Runs offline against committed fixtures by default. Live data needs a key in `.e
 <!-- CHECKPOINTS:START -->
 | Date | Commit | What changed | Next |
 |------|--------|--------------|------|
+| 2026-10-11 | `d4678df` | Day 1: historical statement ingestion into a normalized schema (model/historical.py). Reused reverse-dcf-engine's own Day 2 transcription of Gulf Oil Lubricants India's ten-year financials (data/GULFOILLUB/financials.csv) rather than re-sourcing the same filings a second time, per NEXT_STEPS.md's own instruction (research/sources.md records exactly what was reused and where the real page citations live). Turns the flat 14-column CSV into typed IncomeStatement/BalanceSheetSummary/CashFlowSummary objects per fiscal year and checks two identities the source data implies by construction (ebitda - D&A == ebit; ebit - interest - tax == net_profit), both passing cleanly on all 10 years. The balance-sheet/cash-flow schemas are deliberately thin -- no total_equity field, no financing/working-capital cash-flow lines -- because the source data has no liabilities/equity breakdown to derive them from honestly; flagged in Limitations as a gap Day 5's balance-check will need a second transcription pass to close, not a plug. python -m model.ingest --ticker GULFOILLUB reports realized revenue CAGR +14.54% (FY2014-15 to FY2023-24), matching reverse-dcf-engine's own figure for the same company exactly. 20/20 tests pass (tests/test_historical.py); the CLI was run by hand against the real fixture and the missing-file error path. | Day 2 - driver-based revenue build (units x price, or segment volumes, or stores x revenue per store), not a growth percentage typed into a cell |
 <!-- CHECKPOINTS:END -->
 
 ## Limitations and what would make me wrong
