@@ -77,7 +77,13 @@ from model.debt_schedule import (
 )
 from model.historical import HistoricalStatement
 from model.revenue_driver import SegmentRevenue, forecast_revenue
-from model.schedules import DEFAULT_TRAILING_YEARS, build_schedule, forecast_schedule, trailing_average
+from model.schedules import (
+    DEFAULT_TRAILING_YEARS,
+    ForecastScheduleYear,
+    build_schedule,
+    forecast_schedule,
+    trailing_average,
+)
 
 DEFAULT_DIVIDEND_PAYOUT = 0.0
 DEFAULT_BALANCE_TOLERANCE = 0.01
@@ -227,8 +233,6 @@ def forecast_full_linkage(
     if forecast_years < 1:
         raise ValueError("forecast_years must be >= 1")
 
-    historical_linkage = build_historical_linkage(statements)
-    historical_debt = build_historical_debt_schedule(statements)
     schedule = build_schedule(statements)
     revenue_forecasts = forecast_revenue(
         segments, forecast_years, domestic_growth=domestic_growth, export_growth=export_growth
@@ -242,6 +246,57 @@ def forecast_full_linkage(
         nwc_margin=nwc_margin,
         trailing_years=trailing_years,
     )
+
+    return forecast_linkage_from_cost_forecasts(
+        statements,
+        cost_forecasts,
+        tax_rate=tax_rate,
+        dividend_payout=dividend_payout,
+        amortization_rate=amortization_rate,
+        revolver_limit=revolver_limit,
+        interest_rate=interest_rate,
+        circular=circular,
+        trailing_years=trailing_years,
+        balance_tolerance=balance_tolerance,
+        max_tax_iterations=max_tax_iterations,
+        tax_tolerance=tax_tolerance,
+    )
+
+
+def forecast_linkage_from_cost_forecasts(
+    statements: list[HistoricalStatement],
+    cost_forecasts: list[ForecastScheduleYear],
+    tax_rate: float | None = None,
+    dividend_payout: float | None = None,
+    amortization_rate: float | None = None,
+    revolver_limit: float | None = None,
+    interest_rate: float | None = None,
+    circular: bool = True,
+    trailing_years: int = DEFAULT_TRAILING_YEARS,
+    balance_tolerance: float = DEFAULT_BALANCE_TOLERANCE,
+    max_tax_iterations: int = DEFAULT_MAX_ITERATIONS,
+    tax_tolerance: float = DEFAULT_TOLERANCE,
+) -> list[ForecastLinkageYear]:
+    """The per-year tax/interest circularity loop :func:`forecast_full_linkage`
+    runs, pulled out so a caller that needs a *different* revenue/cost
+    forecast per year — Day 8's revolver-draw scenario
+    (``model.revolver_scenario``), which forecasts some years at baseline
+    assumptions and others under a deliberate shock — can drive this same,
+    already-tested loop with its own :class:`model.schedules.ForecastScheduleYear`
+    list instead of the single flat set of overrides
+    :func:`forecast_full_linkage` builds one ``cost_forecasts`` from.
+
+    ``cost_forecasts`` must be in fiscal-year order, immediately following
+    ``statements``' last historical year — the same shape
+    :func:`forecast_full_linkage` already passes in.
+    """
+    if not statements:
+        raise ValueError("need at least one historical statement")
+    if not cost_forecasts:
+        raise ValueError("need at least one forecast year")
+
+    historical_linkage = build_historical_linkage(statements)
+    historical_debt = build_historical_debt_schedule(statements)
 
     used_amortization_rate = amortization_rate if amortization_rate is not None else DEFAULT_AMORTIZATION_RATE
     used_revolver_limit = (

@@ -17,8 +17,10 @@ from model.linkage import (
     build_historical_linkage,
     default_tax_rate,
     forecast_full_linkage,
+    forecast_linkage_from_cost_forecasts,
 )
-from model.revenue_driver import load_segment_revenue
+from model.revenue_driver import forecast_revenue, load_segment_revenue
+from model.schedules import build_schedule, forecast_schedule
 
 ROOT = Path(__file__).resolve().parent.parent
 GULFOILLUB_CSV = ROOT / "data" / "GULFOILLUB" / "financials.csv"
@@ -94,6 +96,40 @@ def test_forecast_full_linkage_rejects_zero_forecast_years():
     statements_, segments = _real_inputs()
     with pytest.raises(ValueError, match="forecast_years must be >= 1"):
         forecast_full_linkage(statements_, segments, 0)
+
+
+# -- forecast_linkage_from_cost_forecasts: Day 8 pulled this loop out of
+# forecast_full_linkage so model.revolver_scenario can drive it with a
+# per-year-different cost forecast; these check the extraction changed
+# nothing about forecast_full_linkage's own real-fixture behavior. --------------
+
+
+def test_forecast_linkage_from_cost_forecasts_matches_forecast_full_linkage():
+    statements_, segments = _real_inputs()
+    schedule = build_schedule(statements_)
+    revenue_forecasts = forecast_revenue(segments, 3)
+    cost_forecasts = forecast_schedule(schedule, revenue_forecasts)
+
+    direct = forecast_full_linkage(statements_, segments, 3)
+    via_cost_forecasts = forecast_linkage_from_cost_forecasts(statements_, cost_forecasts)
+
+    assert [f.revenue for f in via_cost_forecasts] == [f.revenue for f in direct]
+    assert [f.ending_total_debt for f in via_cost_forecasts] == [f.ending_total_debt for f in direct]
+    assert [f.balance_check_passed for f in via_cost_forecasts] == [f.balance_check_passed for f in direct]
+
+
+def test_forecast_linkage_from_cost_forecasts_rejects_empty_cost_forecasts():
+    statements_, _ = _real_inputs()
+    with pytest.raises(ValueError, match="at least one forecast year"):
+        forecast_linkage_from_cost_forecasts(statements_, [])
+
+
+def test_forecast_linkage_from_cost_forecasts_rejects_empty_statements():
+    _, segments = _real_inputs()
+    schedule = build_schedule(load_historical_statements(GULFOILLUB_CSV))
+    cost_forecasts = forecast_schedule(schedule, forecast_revenue(segments, 1))
+    with pytest.raises(ValueError, match="at least one historical statement"):
+        forecast_linkage_from_cost_forecasts([], cost_forecasts)
 
 
 # -- forecast_full_linkage: the real integration --------------------------------
