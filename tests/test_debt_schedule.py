@@ -135,6 +135,24 @@ def test_forecast_debt_schedule_starts_the_revolver_at_zero():
     assert forecasts[0].opening_revolver == pytest.approx(0.0)
 
 
+def test_forecast_debt_schedule_accepts_a_nonzero_initial_revolver():
+    """Day 5's full linkage calls this function one forecast year at a time
+    (to resolve its own tax-vs-interest circularity before fixing the next
+    year's opening balances) and needs to carry a drawn revolver balance
+    across those separate calls -- this is what ``initial_revolver`` is for."""
+    historical = _two_year_historical()
+    forecasts = forecast_debt_schedule(
+        historical,
+        ["FY2024-25"],
+        [50000.0],
+        interest_rate=0.10,
+        revolver_limit=20000.0,
+        circular=False,
+        initial_revolver=5000.0,
+    )
+    assert forecasts[0].opening_revolver == pytest.approx(5000.0)
+
+
 # -- forecast_debt_schedule: non-circular (opening-balance) interest ------------
 
 

@@ -174,6 +174,7 @@ def forecast_debt_schedule(
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     tolerance: float = DEFAULT_TOLERANCE,
     trailing_years: int = DEFAULT_TRAILING_YEARS,
+    initial_revolver: float = 0.0,
 ) -> list[ForecastDebtYear]:
     """Project the debt schedule forward, one :class:`ForecastDebtYear` per
     entry in ``fiscal_years`` / ``cash_available_for_debt_service`` (same
@@ -184,8 +185,13 @@ def forecast_debt_schedule(
     docstring for why this is a plain input here rather than derived from
     a full income statement. The opening term-debt balance is the last
     historical year's ``total_debt``; the opening revolver balance is
-    ``0.0`` (no revolver usage is evidenced in the historical data — see
-    this project's README Limitations).
+    ``initial_revolver`` (default ``0.0`` — no revolver usage is evidenced
+    in the historical data, see this project's README Limitations).
+    ``initial_revolver`` exists so Day 5's full linkage can carry a
+    revolver balance across separate, single-year calls to this function
+    (it resolves its own interest/tax circularity one year at a time) —
+    calling with the whole forecast horizon in one list, as Day 4's own
+    CLI does, never needs it and keeps passing the default.
     """
     if not historical:
         raise ValueError("need at least one historical debt year")
@@ -201,7 +207,7 @@ def forecast_debt_schedule(
     )
 
     opening_term_debt = historical[-1].total_debt
-    opening_revolver = 0.0
+    opening_revolver = initial_revolver
     forecasts = []
     for fiscal_year, cfads in zip(fiscal_years, cash_available_for_debt_service):
         scheduled_amortization = min(opening_term_debt, used_amortization_rate * opening_term_debt)
