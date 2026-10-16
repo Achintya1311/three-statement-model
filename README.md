@@ -6,6 +6,8 @@ A fully linked income statement, balance sheet and cash flow forecast built from
 
 **Status:** Complete (Oct 2026). Part of a nine-repo equity research pipeline; [STOCKSTALKER](https://github.com/Achintya1311/STOCKSTALKER) is the front door.
 
+*Educational research on historical data. Not investment advice. Not a SEBI-registered research analyst.*
+
 ## What this is
 
 Revenue is built from operating drivers rather than a growth percentage. Debt carries a real schedule with mandatory amortisation, a revolver and interest on average debt behind an explicit circularity toggle.
