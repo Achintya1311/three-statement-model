@@ -2,7 +2,7 @@
 
 A fully linked income statement, balance sheet and cash flow forecast built from the filings with no template underneath, where the balance check is a test that fails loudly.
 
-**Status:** Last checkpoint 2026-10-11 · Next: stockstalker-front-door Day 1 - stockstalker.run: price and peer section for GULFOILLUB from committed fixtures
+**Status:** Complete (Oct 2026). Part of a nine-repo equity research pipeline; [STOCKSTALKER](https://github.com/Achintya1311/STOCKSTALKER) is the front door.
 
 ## What this is
 
