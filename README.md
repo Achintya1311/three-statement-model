@@ -1,5 +1,7 @@
 # Three-statement model from primary filings
 
+Educational research on historical data. Not investment advice. Not a SEBI-registered research analyst.
+
 A fully linked income statement, balance sheet and cash flow forecast built from the filings with no template underneath, where the balance check is a test that fails loudly.
 
 **Status:** Complete (Oct 2026). Part of a nine-repo equity research pipeline; [STOCKSTALKER](https://github.com/Achintya1311/STOCKSTALKER) is the front door.
