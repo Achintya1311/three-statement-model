@@ -109,6 +109,20 @@ def run(
             f"{f.unmet_financing_gap:>10,.2f} {str(f.balance_check_passed):>9} {str(converged):>9}"
         )
 
+    print(
+        f"\n{'Fiscal year':<12} {'Shares out.':>14} {'EPS':>10} {'DPS':>10} {'BVPS':>10}"
+    )
+    for f in forecasts:
+        print(
+            f"{f.fiscal_year:<12} {f.shares_outstanding:>14,.0f} {f.eps:>10,.2f} "
+            f"{f.dividend_per_share:>10,.2f} {f.book_value_per_share:>10,.2f}"
+        )
+    print(
+        "(shares outstanding held flat at the last historical value -- no corporate "
+        "action is modeled; EPS/DPS/BVPS are in rupees, converted from the ₹-lakh "
+        "figures above)"
+    )
+
     if any(not (f.debt_converged and f.tax_converged) for f in forecasts):
         print(
             "\nwarning: the interest/tax circular solve did not converge for every year",

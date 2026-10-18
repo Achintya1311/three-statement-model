@@ -47,6 +47,15 @@ LINE_ITEM_COLUMNS = REQUIRED_COLUMNS[1:]
 # here means a transcription or copy slip, not a real accounting surprise.
 IDENTITY_TOLERANCE = 0.05
 
+LAKH_TO_RUPEES = 100_000
+"""``financials.csv`` reports every rupee line item in ₹ lakh (confirmed in
+``research/sources.md``); ``shares_outstanding`` is a raw share count, not
+in lakh. A per-share metric (EPS, book value per share) has to multiply the
+₹-lakh figure by this constant before dividing by shares, or the result
+comes out in lakh-per-share — five orders of magnitude off. The same trap,
+the same data, and the same fix as reverse-dcf-engine's own
+``forward.LAKH_TO_RUPEES``."""
+
 
 @dataclass(frozen=True)
 class IncomeStatement:
@@ -103,6 +112,29 @@ class HistoricalStatement:
     income: IncomeStatement
     balance_sheet: BalanceSheetSummary
     cash_flow: CashFlowSummary
+
+    @property
+    def eps(self) -> float:
+        """Basic EPS in rupees: ``income.net_profit`` (₹ lakh) converted to
+        rupees via :data:`LAKH_TO_RUPEES`, divided by the raw share count."""
+        return self.income.net_profit * LAKH_TO_RUPEES / self.shares_outstanding
+
+    @property
+    def book_value_per_share(self) -> float:
+        """``total_assets - total_debt`` (₹ lakh — the same
+        equity-and-other-liabilities approximation ``model.linkage``
+        documents and uses, since no liabilities/equity breakdown exists
+        in the source data) converted to rupees, divided by the raw share
+        count.
+
+        No ``dividend_per_share`` equivalent exists on this class:
+        ``financials.csv`` has no dividend line at all for any historical
+        year (see ``model.linkage``'s module docstring on
+        ``DEFAULT_DIVIDEND_PAYOUT``), so there is no historical dividend
+        figure to divide by shares in the first place.
+        """
+        equity_and_other_liabilities = self.balance_sheet.total_assets - self.balance_sheet.total_debt
+        return equity_and_other_liabilities * LAKH_TO_RUPEES / self.shares_outstanding
 
 
 def load_financials_csv(path: str | Path) -> pd.DataFrame:

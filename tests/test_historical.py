@@ -126,6 +126,29 @@ def test_balance_sheet_net_debt():
     assert last.balance_sheet.net_debt == pytest.approx(32931.01 - 70223.75)
 
 
+def test_historical_statement_eps_converts_lakh_to_rupees_per_share():
+    statements = historical.load_historical_statements(GULFOILLUB_CSV)
+    last = statements[-1]
+    # FY2023-24: net_profit=30809.85 (Rs lakh), shares_outstanding=49168433.
+    assert last.eps == pytest.approx(30809.85 * historical.LAKH_TO_RUPEES / 49168433)
+    assert last.eps == pytest.approx(62.6621, rel=1e-4)
+
+
+def test_historical_statement_book_value_per_share_converts_lakh_to_rupees_per_share():
+    statements = historical.load_historical_statements(GULFOILLUB_CSV)
+    last = statements[-1]
+    # FY2023-24: total_assets=230449.91, total_debt=32931.01 (Rs lakh).
+    expected = (230449.91 - 32931.01) * historical.LAKH_TO_RUPEES / 49168433
+    assert last.book_value_per_share == pytest.approx(expected)
+
+
+def test_historical_statement_has_no_dividend_per_share_property():
+    """No dividend line exists in financials.csv for any year (see
+    model.linkage's DEFAULT_DIVIDEND_PAYOUT docstring), so there is no
+    historical dividend figure to turn into a per-share number."""
+    assert not hasattr(historical.HistoricalStatement, "dividend_per_share")
+
+
 def test_balance_sheet_summary_has_no_equity_field():
     """The source data has no liabilities/equity breakdown (see research/sources.md);
     this schema must not invent one."""

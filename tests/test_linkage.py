@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from model import statements
-from model.historical import load_historical_statements
+from model.historical import LAKH_TO_RUPEES, load_historical_statements
 from model.linkage import (
     DEFAULT_DIVIDEND_PAYOUT,
     HistoricalLinkageYear,
@@ -197,6 +197,49 @@ def test_full_linkage_carries_debt_balance_forward_across_forecast_years():
     assert debts[0] > debts[1] > debts[2]
 
 
+# -- per-share metrics (P30): shares outstanding held flat, EPS/DPS/BVPS ------
+
+
+def test_forecast_shares_outstanding_is_held_flat_at_the_last_historical_value():
+    statements_, segments = _real_inputs()
+    forecasts = forecast_full_linkage(statements_, segments, 3)
+    last_historical_shares = sorted(statements_, key=lambda s: s.fiscal_year)[-1].shares_outstanding
+    assert last_historical_shares == pytest.approx(49168433)
+    for f in forecasts:
+        assert f.shares_outstanding == pytest.approx(last_historical_shares)
+
+
+def test_forecast_eps_converts_net_income_from_lakh_to_rupees_per_share():
+    statements_, segments = _real_inputs()
+    forecasts = forecast_full_linkage(statements_, segments, 3)
+    for f in forecasts:
+        assert f.eps == pytest.approx(f.net_income * LAKH_TO_RUPEES / f.shares_outstanding)
+
+
+def test_forecast_dividend_per_share_is_zero_with_the_default_zero_payout():
+    statements_, segments = _real_inputs()
+    forecasts = forecast_full_linkage(statements_, segments, 1)
+    assert forecasts[0].dividends == pytest.approx(0.0)
+    assert forecasts[0].dividend_per_share == pytest.approx(0.0)
+
+
+def test_forecast_dividend_per_share_tracks_a_nonzero_payout_override():
+    statements_, segments = _real_inputs()
+    forecasts = forecast_full_linkage(statements_, segments, 1, dividend_payout=0.5)
+    f = forecasts[0]
+    assert f.dividends > 0.0
+    assert f.dividend_per_share == pytest.approx(f.dividends * LAKH_TO_RUPEES / f.shares_outstanding)
+
+
+def test_forecast_book_value_per_share_tracks_ending_equity_and_other_liabilities():
+    statements_, segments = _real_inputs()
+    forecasts = forecast_full_linkage(statements_, segments, 3)
+    for f in forecasts:
+        assert f.book_value_per_share == pytest.approx(
+            f.equity_and_other_liabilities * LAKH_TO_RUPEES / f.shares_outstanding
+        )
+
+
 def test_full_linkage_no_circular_mode_also_balances():
     statements_, segments = _real_inputs()
     forecasts = forecast_full_linkage(statements_, segments, 2, circular=False)
@@ -308,6 +351,27 @@ def test_statements_cli_run_against_the_real_fixtures(capsys):
     assert exit_code == 0
     assert "balance check passed for every forecast year" in out
     assert "FY2026-27" in out
+
+
+def test_statements_cli_prints_per_share_metrics(capsys):
+    exit_code = statements.run(
+        "GULFOILLUB",
+        GULFOILLUB_CSV,
+        SEGMENT_CSV,
+        forecast_years=3,
+        tax_rate=None,
+        dividend_payout=None,
+        amortization_rate=None,
+        revolver_limit=None,
+        interest_rate=None,
+        circular=True,
+        trailing_years=3,
+    )
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "EPS" in out
+    assert "BVPS" in out
+    assert "held flat at the last historical value" in out
 
 
 def test_statements_cli_no_circular_mode(capsys):

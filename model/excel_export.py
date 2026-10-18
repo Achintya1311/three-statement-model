@@ -50,7 +50,7 @@ from model.debt_schedule import (
     default_interest_rate,
     default_revolver_limit,
 )
-from model.historical import HistoricalStatement
+from model.historical import LAKH_TO_RUPEES, HistoricalStatement
 from model.linkage import (
     DEFAULT_BALANCE_TOLERANCE,
     DEFAULT_DIVIDEND_PAYOUT,
@@ -106,8 +106,11 @@ FORECAST_ROWS = [
     ("tax_rate_used", "Tax rate used"),
     ("tax_expense", "Tax expense"),
     ("net_income", "Net income"),
+    ("shares_outstanding", "Shares outstanding (held flat, no corporate action modeled)"),
+    ("eps", "EPS (Rs/share)"),
     ("dividend_payout_used", "Dividend payout ratio used"),
     ("dividends", "Dividends"),
+    ("dividend_per_share", "Dividend per share (Rs/share)"),
     ("capex_margin_used", "Capex margin used"),
     ("capex", "Capex"),
     ("nwc_margin_used", "NWC margin used"),
@@ -128,6 +131,7 @@ FORECAST_ROWS = [
     ("cash", "Cash (ending balance)"),
     ("other_assets", "Other assets (ending balance)"),
     ("equity_and_other_liabilities", "Equity & other liabilities (ending balance)"),
+    ("book_value_per_share", "Book value per share (Rs/share)"),
     ("total_assets", "Total assets"),
     ("total_liabilities_and_equity", "Total liabilities & equity"),
     ("balance_difference", "Balance difference (assets - liab.+equity)"),
@@ -146,6 +150,7 @@ BASE_LITERAL_ROWS = {
     "cash",
     "other_assets",
     "equity_and_other_liabilities",
+    "shares_outstanding",
 }
 # Rows that get a formula in the Base column too, built only from other Base
 # cells, so the balance check can be shown to hold trivially in the base
@@ -372,6 +377,7 @@ def build_workbook(
         "cash": hl_last.cash,
         "other_assets": hl_last.other_assets,
         "equity_and_other_liabilities": hl_last.equity_and_other_liabilities,
+        "shares_outstanding": statements[-1].shares_outstanding,
     }
     B = "B"
     forecast.cell(row=row_of["fiscal_year"], column=2, value=last_hist)
@@ -424,8 +430,15 @@ def build_workbook(
         f.cell(row=r("tax_rate_used"), column=col, value=f"={A('tax_rate')}")
         f.cell(row=r("tax_expense"), column=col, value=f"=MAX(0,{cur('tax_rate_used')}*{cur('pretax_income')})")
         f.cell(row=r("net_income"), column=col, value=f"={cur('pretax_income')}-{cur('tax_expense')}")
+        f.cell(row=r("shares_outstanding"), column=col, value=f"={prev('shares_outstanding')}")
+        f.cell(row=r("eps"), column=col, value=f"={cur('net_income')}*{LAKH_TO_RUPEES}/{cur('shares_outstanding')}")
         f.cell(row=r("dividend_payout_used"), column=col, value=f"={A('dividend_payout')}")
         f.cell(row=r("dividends"), column=col, value=f"={cur('dividend_payout_used')}*MAX({cur('net_income')},0)")
+        f.cell(
+            row=r("dividend_per_share"),
+            column=col,
+            value=f"={cur('dividends')}*{LAKH_TO_RUPEES}/{cur('shares_outstanding')}",
+        )
 
         f.cell(row=r("capex_margin_used"), column=col, value=f"={A('capex_margin')}")
         f.cell(row=r("capex"), column=col, value=f"={cur('total_revenue')}*{cur('capex_margin_used')}")
@@ -490,6 +503,11 @@ def build_workbook(
             row=r("equity_and_other_liabilities"),
             column=col,
             value=f"={prev('equity_and_other_liabilities')}+{cur('net_income')}-{cur('dividends')}",
+        )
+        f.cell(
+            row=r("book_value_per_share"),
+            column=col,
+            value=f"={cur('equity_and_other_liabilities')}*{LAKH_TO_RUPEES}/{cur('shares_outstanding')}",
         )
 
         f.cell(

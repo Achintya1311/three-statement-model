@@ -75,7 +75,7 @@ from model.debt_schedule import (
     default_revolver_limit,
     forecast_debt_schedule,
 )
-from model.historical import HistoricalStatement
+from model.historical import LAKH_TO_RUPEES, HistoricalStatement
 from model.revenue_driver import SegmentRevenue, forecast_revenue
 from model.schedules import (
     DEFAULT_TRAILING_YEARS,
@@ -203,6 +203,20 @@ class ForecastLinkageYear:
     """Day 4's own interest-vs-average-balance circularity, for this year."""
     tax_converged: bool
     """The outer tax-vs-interest circularity this module adds, for this year."""
+    shares_outstanding: float
+    """Held flat at the last historical year's own value for every forecast
+    year — no corporate action (bonus issue, split, buyback, rights issue)
+    is modeled anywhere in this repo (P31). Explicit and checkable here,
+    rather than an assumption a caller has to infer from its absence."""
+    eps: float
+    """``net_income`` (₹ lakh, like every other figure on this dataclass)
+    converted to rupees via :data:`model.historical.LAKH_TO_RUPEES`, divided
+    by ``shares_outstanding``."""
+    dividend_per_share: float
+    """``dividends`` converted to rupees, divided by ``shares_outstanding``."""
+    book_value_per_share: float
+    """``equity_and_other_liabilities`` (this year's ending balance)
+    converted to rupees, divided by ``shares_outstanding``."""
 
 
 def forecast_full_linkage(
@@ -332,6 +346,7 @@ def forecast_linkage_from_cost_forecasts(
     equity_and_other_liabilities = last.equity_and_other_liabilities
     opening_term_debt = historical_debt[-1].total_debt
     opening_revolver = 0.0
+    shares_outstanding = sorted(statements, key=lambda s: s.fiscal_year)[-1].shares_outstanding
 
     forecasts = []
     for cost_year in cost_forecasts:
@@ -392,6 +407,10 @@ def forecast_linkage_from_cost_forecasts(
         total_liabilities_and_equity = ending_total_debt + new_equity_and_other_liabilities
         balance_difference = total_assets - total_liabilities_and_equity
 
+        eps = net_income * LAKH_TO_RUPEES / shares_outstanding
+        dividend_per_share = dividends * LAKH_TO_RUPEES / shares_outstanding
+        book_value_per_share = new_equity_and_other_liabilities * LAKH_TO_RUPEES / shares_outstanding
+
         forecasts.append(
             ForecastLinkageYear(
                 fiscal_year=cost_year.fiscal_year,
@@ -420,6 +439,10 @@ def forecast_linkage_from_cost_forecasts(
                 unmet_financing_gap=debt_result.unmet_financing_gap,
                 debt_converged=debt_result.converged,
                 tax_converged=tax_converged,
+                shares_outstanding=shares_outstanding,
+                eps=eps,
+                dividend_per_share=dividend_per_share,
+                book_value_per_share=book_value_per_share,
             )
         )
 
