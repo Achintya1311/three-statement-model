@@ -106,6 +106,30 @@ def test_every_year_still_balances_under_the_shock():
     assert_balance_sheet_balances([r.linkage for r in results])  # raises if any year fails to balance
 
 
+def test_a_severe_persistent_shock_reports_the_financing_gap_instead_of_hiding_it():
+    """P29: a shortfall the revolver limit can't cover must be surfaced as
+    ``unmet_financing_gap`` on the linkage year, not silently absorbed into
+    the cash roll-forward with the balance check still reporting a clean
+    pass. Reproduces the exact scenario the critique found it in."""
+    statements, segments = _real_inputs()
+    results = simulate_revolver_draw_scenario(
+        statements, segments, 5, shock_year=1, shock_duration=5, shock_ebitda_margin=-0.20
+    )
+    assert_balance_sheet_balances([r.linkage for r in results])  # the wiring identity still holds
+
+    gaps = [r.linkage.unmet_financing_gap for r in results]
+    assert any(gap > 0 for gap in gaps)
+    for r in results:
+        if r.linkage.unmet_financing_gap > 0:
+            # a real, uncovered shortfall -- never negative, never hidden
+            assert r.linkage.cash < 0
+            # the balance check is an algebraic wiring identity (assets ==
+            # liabilities + equity by construction) and is deliberately
+            # unaffected by whether financing was actually available --
+            # unmet_financing_gap is the separate, never-silent signal for that.
+            assert r.linkage.balance_check_passed is True
+
+
 def test_rejects_a_shock_span_that_does_not_fit_the_forecast():
     statements, segments = _real_inputs()
     with pytest.raises(ValueError, match="does not fit"):
@@ -150,6 +174,24 @@ def test_revolver_cli_run_against_the_real_fixtures(capsys):
     assert "balance check passed for every forecast year" in out
     assert "year 2 only" in out
     assert "True" in out  # the Shocked column has at least one True row
+
+
+def test_revolver_cli_warns_on_an_unmet_financing_gap(capsys):
+    exit_code = revolver.run(
+        "GULFOILLUB",
+        GULFOILLUB_CSV,
+        SEGMENT_CSV,
+        forecast_years=5,
+        shock_year=1,
+        shock_duration=5,
+        shock_ebitda_margin=-0.20,
+        circular=True,
+        trailing_years=3,
+    )
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Gap" in captured.out
+    assert "real financing gap" in captured.err
 
 
 def test_revolver_cli_no_circular_mode(capsys):

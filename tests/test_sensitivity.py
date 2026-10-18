@@ -74,7 +74,7 @@ def _year(**overrides) -> ForecastLinkageYear:
         revolver_repayment=0.0, ending_total_debt=50.0, cash=30.0, net_working_capital=10.0,
         other_assets=40.0, total_assets=80.0, equity_and_other_liabilities=30.0,
         total_liabilities_and_equity=80.0, balance_difference=0.0, balance_check_passed=True,
-        debt_converged=True, tax_converged=True,
+        unmet_financing_gap=0.0, debt_converged=True, tax_converged=True,
     )
     fields.update(overrides)
     return ForecastLinkageYear(**fields)

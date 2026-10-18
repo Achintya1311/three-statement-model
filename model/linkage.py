@@ -181,6 +181,24 @@ class ForecastLinkageYear:
     """``total_assets - total_liabilities_and_equity``. Should be ~0 for a
     correctly wired linkage — see module docstring."""
     balance_check_passed: bool
+    """Whether the two sides agree to within tolerance — a *wiring*
+    identity, not a financing-feasibility check. It can be ``True`` even
+    in a year with a positive ``unmet_financing_gap``: a shortfall the
+    revolver limit couldn't cover still shows up correctly on both sides
+    (as a lower cash balance on assets, with liabilities+equity unchanged
+    by financing that was never actually available), so the two sides
+    still agree by construction. ``unmet_financing_gap`` is the separate
+    field that reports whether the company could actually fund itself —
+    check it explicitly; a passing balance check alone does not mean the
+    financing gap was zero."""
+    unmet_financing_gap: float
+    """Pass-through of :class:`model.debt_schedule.ForecastDebtYear`'s own
+    field for this year: the cash shortfall the revolver limit could not
+    cover, >= 0. Previously computed by the debt schedule and then
+    discarded here — a real financing gap was silently folded into a
+    lower (possibly negative) ``cash`` balance with nothing naming it.
+    Surfaced explicitly so a caller never has to infer a financing gap
+    from a negative cash balance after the fact."""
     debt_converged: bool
     """Day 4's own interest-vs-average-balance circularity, for this year."""
     tax_converged: bool
@@ -399,6 +417,7 @@ def forecast_linkage_from_cost_forecasts(
                 total_liabilities_and_equity=total_liabilities_and_equity,
                 balance_difference=balance_difference,
                 balance_check_passed=abs(balance_difference) <= balance_tolerance,
+                unmet_financing_gap=debt_result.unmet_financing_gap,
                 debt_converged=debt_result.converged,
                 tax_converged=tax_converged,
             )

@@ -99,19 +99,27 @@ def run(
 
     print(
         f"\n{'Fiscal year':<12} {'Total assets':>14} {'Debt':>12} {'Equity+other':>14} {'Diff':>10} "
-        f"{'Balances':>9} {'Converged':>9}"
+        f"{'Gap':>10} {'Balances':>9} {'Converged':>9}"
     )
     for f in forecasts:
         converged = f.debt_converged and f.tax_converged
         print(
             f"{f.fiscal_year:<12} {f.total_assets:>14,.2f} {f.ending_total_debt:>12,.2f} "
             f"{f.equity_and_other_liabilities:>14,.2f} {f.balance_difference:>10,.4f} "
-            f"{str(f.balance_check_passed):>9} {str(converged):>9}"
+            f"{f.unmet_financing_gap:>10,.2f} {str(f.balance_check_passed):>9} {str(converged):>9}"
         )
 
     if any(not (f.debt_converged and f.tax_converged) for f in forecasts):
         print(
             "\nwarning: the interest/tax circular solve did not converge for every year",
+            file=sys.stderr,
+        )
+
+    if any(f.unmet_financing_gap > 0 for f in forecasts):
+        print(
+            "\nwarning: the revolver limit could not cover every year's cash shortfall "
+            "(see 'Gap' above) — this is a real financing gap, not a bug; the balance "
+            "check above still passes (it checks wiring, not financing feasibility)",
             file=sys.stderr,
         )
 

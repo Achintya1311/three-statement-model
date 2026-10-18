@@ -311,7 +311,16 @@ def run(
 
     mode = "circular" if circular else "non-circular"
     rows, base_metric = rank_levers(statements, segments, forecast_years, circular, trailing_years)
-    final_fy = run_scenario(statements, segments, forecast_years, {}, circular, trailing_years)[-1].fiscal_year
+    base_forecasts = run_scenario(statements, segments, forecast_years, {}, circular, trailing_years)
+    final_fy = base_forecasts[-1].fiscal_year
+
+    if any(f.unmet_financing_gap > 0 for f in base_forecasts):
+        print(
+            "\nwarning: the base case itself has a year the revolver limit couldn't cover "
+            "(see model.statements/model.debt for the per-year gap) — this is a real "
+            "financing gap, not a bug",
+            file=sys.stderr,
+        )
 
     print(
         f"{ticker}: Day 7 sensitivity ranking — impact on {final_fy} net debt/EBITDA "

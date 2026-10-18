@@ -87,14 +87,21 @@ def run(
     )
     print(
         f"\n{'Fiscal year':<12}{'Shocked':>9}{'EBITDA':>14}{'Interest':>10}{'Draw':>10}"
-        f"{'Repay':>10}{'End debt':>12}{'Balances':>10}"
+        f"{'Repay':>10}{'End debt':>12}{'Gap':>14}{'Balances':>10}"
     )
     for r in results:
         f = r.linkage
         print(
             f"{f.fiscal_year:<12}{str(r.shocked):>9}{f.ebitda:>14,.2f}{f.interest_expense:>10,.2f}"
             f"{f.revolver_draw:>10,.2f}{f.revolver_repayment:>10,.2f}"
-            f"{f.ending_total_debt:>12,.2f}{str(f.balance_check_passed):>10}"
+            f"{f.ending_total_debt:>12,.2f}{f.unmet_financing_gap:>14,.2f}{str(f.balance_check_passed):>10}"
+        )
+
+    if any(r.linkage.unmet_financing_gap > 0 for r in results):
+        print(
+            "\nwarning: the revolver limit could not cover every year's cash shortfall "
+            "(see 'Gap' above) — this is a real financing gap, not a bug",
+            file=sys.stderr,
         )
 
     try:
