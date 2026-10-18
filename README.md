@@ -105,7 +105,7 @@ python -m model.revolver --ticker GULFOILLUB --shock-year 2 --shock-ebitda-margi
 python -m model.revolver --ticker GULFOILLUB --shock-year 2 --shock-duration 3 --forecast-years 4
 ```
 
-Runs offline against committed fixtures by default. Live data needs a key in `.env` (see `.env.example`); the fixture path is the default so nothing blocks on network access.
+This repo is offline-only, against committed fixtures. No code here reads an API key or performs any live fetch; there is no live-data path.
 
 ## Findings
 
