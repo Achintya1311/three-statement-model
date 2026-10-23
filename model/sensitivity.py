@@ -143,6 +143,22 @@ def shocked_value(name: str, base: float, direction: int) -> float:
     return value
 
 
+def scenario_flags(forecasts: list[ForecastLinkageYear]) -> str:
+    """The same two checks ``model.statements``'/``model.debt``'s own CLIs
+    already apply to the base case (P60), applied to one shocked scenario's
+    full forecast: a non-empty result means the metric computed from this
+    scenario comes from a year that either couldn't fund itself through the
+    revolver (``unmet_financing_gap > 0``) or whose interest/tax circular
+    solve didn't converge -- not a bug, but not a fully resolved number
+    either. Empty string when every year is clean."""
+    flags = []
+    if any(f.unmet_financing_gap > 0 for f in forecasts):
+        flags.append("gap")
+    if any(not (f.debt_converged and f.tax_converged) for f in forecasts):
+        flags.append("non-conv")
+    return "+".join(flags)
+
+
 def net_debt_to_ebitda(year: ForecastLinkageYear) -> float | None:
     """``(ending total debt - cash) / EBITDA`` for one forecast year — the
     contract's ``net_debt_ebitda_fy3`` figure. Negative means a net cash
@@ -191,12 +207,10 @@ def rank_levers(
         base = base_values[name]
         down_val = shocked_value(name, base, -1)
         up_val = shocked_value(name, base, +1)
-        down_metric = net_debt_to_ebitda(
-            run_scenario(statements, segments, forecast_years, {name: down_val}, circular, trailing_years)[-1]
-        )
-        up_metric = net_debt_to_ebitda(
-            run_scenario(statements, segments, forecast_years, {name: up_val}, circular, trailing_years)[-1]
-        )
+        down_forecasts = run_scenario(statements, segments, forecast_years, {name: down_val}, circular, trailing_years)
+        up_forecasts = run_scenario(statements, segments, forecast_years, {name: up_val}, circular, trailing_years)
+        down_metric = net_debt_to_ebitda(down_forecasts[-1])
+        up_metric = net_debt_to_ebitda(up_forecasts[-1])
         swings = [
             abs(m - base_metric)
             for m in (down_metric, up_metric)
@@ -209,8 +223,10 @@ def rank_levers(
                 "base": base,
                 "down_value": down_val,
                 "down_metric": down_metric,
+                "down_flag": scenario_flags(down_forecasts),
                 "up_value": up_val,
                 "up_metric": up_metric,
+                "up_flag": scenario_flags(up_forecasts),
                 "impact": impact,
             }
         )
@@ -242,13 +258,16 @@ def sensitivity_grid(
     circular: bool,
     trailing_years: int,
     steps: int = 2,
-) -> tuple[list[float], list[float], list[list[float | None]]]:
+) -> tuple[list[float], list[float], list[list[float | None]], list[list[str]]]:
     """FY-final net debt/EBITDA over every combination of ``row_var`` and
     ``col_var`` at up to ``2 * steps + 1`` values each side of their own
     defaults, every other lever held at default — a two-variable data
     table. A lever floored at zero (see ``NO_FLOOR``) can contribute fewer
     distinct rows/columns than ``steps`` implies, once its negative steps
-    collapse onto zero."""
+    collapse onto zero. The fourth return value is a same-shape grid of
+    ``scenario_flags`` strings (P60), one per cell, so a caller can tell a
+    cell that isn't fully resolved (a financing gap or a convergence
+    failure somewhere in that cell's own forecast) from one that is."""
     base_values = resolve_base_assumptions(statements, segments, trailing_years)
     row_values = [
         base_values[row_var] + step * SHOCKS[row_var] for step in range(-steps, steps + 1)
@@ -264,15 +283,19 @@ def sensitivity_grid(
     col_values = _dedupe(col_values)
 
     table = []
+    flags = []
     for rv in row_values:
         row = []
+        flag_row = []
         for cv in col_values:
             forecasts = run_scenario(
                 statements, segments, forecast_years, {row_var: rv, col_var: cv}, circular, trailing_years
             )
             row.append(net_debt_to_ebitda(forecasts[-1]))
+            flag_row.append(scenario_flags(forecasts))
         table.append(row)
-    return row_values, col_values, table
+        flags.append(flag_row)
+    return row_values, col_values, table, flags
 
 
 def _fmt_pct(value: float | None) -> str:
@@ -336,11 +359,24 @@ def run(
             f"{row['impact']:>10.2f}"
         )
 
+    flagged_rows = [row for row in rows if row["down_flag"] or row["up_flag"]]
+    if flagged_rows:
+        print(
+            "\nwarning: the shocked metric below isn't fully resolved for every lever "
+            "(a financing gap the revolver couldn't cover, and/or a circular solve that "
+            "didn't converge) — see model.statements/model.debt; not a bug:",
+            file=sys.stderr,
+        )
+        for row in flagged_rows:
+            for direction, flag in (("down", row["down_flag"]), ("up", row["up_flag"])):
+                if flag:
+                    print(f"  {LABELS[row['name']]} ({direction}): {flag}", file=sys.stderr)
+
     top_two = [rows[0]["name"], rows[1]["name"]]
     print(f"\nthe two assumptions that actually move the answer: {LABELS[top_two[0]]}, {LABELS[top_two[1]]}")
 
     row_var, col_var = top_two
-    row_values, col_values, table = sensitivity_grid(
+    row_values, col_values, table, grid_flags = sensitivity_grid(
         statements, segments, forecast_years, row_var, col_var, circular, trailing_years, steps
     )
     print(
@@ -350,6 +386,24 @@ def run(
     print(header)
     for rv, row in zip(row_values, table):
         print(f"{_fmt_pct(rv):<26}" + "".join(f"{_fmt_metric(v):>12}" for v in row))
+
+    flagged_cells = [
+        (rv, cv, flag)
+        for rv, flag_row in zip(row_values, grid_flags)
+        for cv, flag in zip(col_values, flag_row)
+        if flag
+    ]
+    if flagged_cells:
+        print(
+            "\nwarning: the grid above has cells that aren't fully resolved "
+            "(a financing gap and/or a non-converged circular solve); not a bug:",
+            file=sys.stderr,
+        )
+        for rv, cv, flag in flagged_cells:
+            print(
+                f"  {LABELS[row_var]}={_fmt_pct(rv)}, {LABELS[col_var]}={_fmt_pct(cv)}: {flag}",
+                file=sys.stderr,
+            )
 
     return 0
 

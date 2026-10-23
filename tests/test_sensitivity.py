@@ -19,6 +19,7 @@ from model.sensitivity import (
     rank_levers,
     resolve_base_assumptions,
     run_scenario,
+    scenario_flags,
     sensitivity_grid,
     shocked_value,
 )
@@ -91,6 +92,29 @@ def test_net_debt_to_ebitda_none_for_non_positive_ebitda():
     assert net_debt_to_ebitda(_year(ebitda=-5.0)) is None
 
 
+# -- scenario_flags (P60) --------------------------------------------------------
+
+
+def test_scenario_flags_clean_when_fully_resolved():
+    assert scenario_flags([_year(), _year()]) == ""
+
+
+def test_scenario_flags_detects_a_financing_gap():
+    assert scenario_flags([_year(), _year(unmet_financing_gap=12.5)]) == "gap"
+
+
+def test_scenario_flags_detects_non_convergence():
+    assert scenario_flags([_year(debt_converged=False)]) == "non-conv"
+    assert scenario_flags([_year(tax_converged=False)]) == "non-conv"
+
+
+def test_scenario_flags_detects_both_at_once():
+    assert (
+        scenario_flags([_year(unmet_financing_gap=1.0, tax_converged=False)])
+        == "gap+non-conv"
+    )
+
+
 # -- shocked_value ---------------------------------------------------------------
 
 
@@ -153,34 +177,66 @@ def test_rank_levers_non_circular_runs_without_error():
     assert base_metric is not None
 
 
+def test_rank_levers_real_gulfoillub_shocks_show_no_flags_today():
+    """P60's own evidence: none of the 20 real shocked scenarios (10 levers
+    x 2 directions, today's real SHOCKS sizes) currently trip a financing
+    gap or a convergence failure. This pins that fact so a future change
+    to the shock sizes or the model is caught if it stops being true."""
+    statements, segments = _real_inputs()
+    rows, _ = rank_levers(statements, segments, 3, circular=True, trailing_years=3)
+    assert all(r["down_flag"] == "" and r["up_flag"] == "" for r in rows)
+
+
+def test_rank_levers_flags_a_shock_that_produces_a_financing_gap(monkeypatch):
+    """Before this day's fix, a shock that drives a lever into a real
+    financing gap (P60's own evidence: ebitda_margin floored to 0.0 exhausts
+    the revolver) was invisible in ``rank_levers``' own output -- only the
+    base case was checked. A shock this large isn't realistic, but it is
+    cheap and direct proof the check actually threads through, which the
+    small real SHOCKS sizes above can't exercise today."""
+    statements, segments = _real_inputs()
+    base = resolve_base_assumptions(statements, segments, 3)
+    monkeypatch.setitem(SHOCKS, "ebitda_margin", base["ebitda_margin"] + 1.0)
+    rows, _ = rank_levers(statements, segments, 3, circular=True, trailing_years=3)
+    row = next(r for r in rows if r["name"] == "ebitda_margin")
+    assert row["down_value"] == 0.0
+    assert row["down_flag"] == "gap"
+    assert row["up_flag"] == ""
+
+
 # -- sensitivity_grid --------------------------------------------------------------
 
 
 def test_sensitivity_grid_shape_for_two_unfloored_levers():
     statements, segments = _real_inputs()
-    rows, cols, table = sensitivity_grid(
+    rows, cols, table, flags = sensitivity_grid(
         statements, segments, 3, "domestic_growth", "export_growth", True, 3, steps=2
     )
     assert len(rows) == 5
     assert len(cols) == 5
     assert len(table) == 5
     assert all(len(r) == 5 for r in table)
+    assert len(flags) == 5
+    assert all(len(r) == 5 for r in flags)
+    assert all(f == "" for row in flags for f in row)
 
 
 def test_sensitivity_grid_dedupes_a_floored_lever():
     statements, segments = _real_inputs()
-    rows, cols, table = sensitivity_grid(
+    rows, cols, table, flags = sensitivity_grid(
         statements, segments, 3, "dividend_payout", "domestic_growth", True, 3, steps=2
     )
     # dividend_payout defaults to 0.0; steps -2/-1/0 all floor to 0.0.
     assert rows == [0.0, pytest.approx(0.20), pytest.approx(0.40)]
     assert len(cols) == 5
     assert len(table) == 3
+    assert len(flags) == 3
+    assert all(len(r) == 5 for r in flags)
 
 
 def test_sensitivity_grid_cell_matches_forecast_full_linkage_directly():
     statements, segments = _real_inputs()
-    rows, cols, table = sensitivity_grid(
+    rows, cols, table, flags = sensitivity_grid(
         statements, segments, 3, "ebitda_margin", "domestic_growth", True, 3, steps=1
     )
     row_var_value, col_var_value = rows[0], cols[0]
@@ -190,11 +246,12 @@ def test_sensitivity_grid_cell_matches_forecast_full_linkage_directly():
         True, 3,
     )
     assert table[0][0] == pytest.approx(net_debt_to_ebitda(direct[-1]))
+    assert flags[0][0] == scenario_flags(direct)
 
 
 def test_sensitivity_grid_every_cell_still_balances():
     statements, segments = _real_inputs()
-    rows, cols, table = sensitivity_grid(
+    rows, cols, table, flags = sensitivity_grid(
         statements, segments, 3, "ebitda_margin", "tax_rate", True, 3, steps=2
     )
     for rv in rows:
@@ -203,6 +260,24 @@ def test_sensitivity_grid_every_cell_still_balances():
                 statements, segments, 3, {"ebitda_margin": rv, "tax_rate": cv}, True, 3
             )
             assert all(f.balance_check_passed for f in forecasts)
+
+
+def test_sensitivity_grid_flags_a_cell_that_produces_a_financing_gap(monkeypatch):
+    """Mirrors the rank_levers test above: before this day's fix, a grid
+    cell that lands in a real financing gap (ebitda_margin floored to 0.0)
+    was reported as a bare number, indistinguishable from a cell that
+    actually resolved cleanly. The real SHOCKS size never floors this row
+    to 0.0 within the grid's own step range, so the shock is enlarged the
+    same way the rank_levers test above does."""
+    statements, segments = _real_inputs()
+    base = resolve_base_assumptions(statements, segments, 3)
+    monkeypatch.setitem(SHOCKS, "ebitda_margin", base["ebitda_margin"] + 1.0)
+    rows, cols, table, flags = sensitivity_grid(
+        statements, segments, 3, "ebitda_margin", "domestic_growth", True, 3, steps=2
+    )
+    zero_row = rows.index(0.0)
+    assert all(f == "gap" for f in flags[zero_row])
+    assert all(f == "" for r in flags[zero_row + 1 :] for f in r)
 
 
 # -- CLI ---------------------------------------------------------------------------
