@@ -129,6 +129,37 @@ def test_forecast_schedule_rejects_empty_historical():
         forecast_schedule([], [ForecastYear("FY2024-25", 300000.0, 20000.0)])
 
 
+# -- forecast_schedule: margin override bounds (P59) --------------------------
+
+
+@pytest.mark.parametrize("flag", ["da_margin", "capex_margin", "nwc_margin"])
+def test_forecast_schedule_rejects_a_negative_margin_override(flag):
+    statements = load_historical_statements(GULFOILLUB_CSV)
+    schedule = build_schedule(statements)
+    with pytest.raises(ValueError, match=f"{flag}=-0.1 is outside the allowed range"):
+        forecast_schedule(schedule, [ForecastYear("FY2024-25", 300000.0, 20000.0)], **{flag: -0.1})
+
+
+@pytest.mark.parametrize("flag", ["da_margin", "capex_margin", "nwc_margin"])
+def test_forecast_schedule_rejects_a_margin_override_above_one(flag):
+    statements = load_historical_statements(GULFOILLUB_CSV)
+    schedule = build_schedule(statements)
+    with pytest.raises(ValueError, match=f"{flag}=1.5 is outside the allowed range"):
+        forecast_schedule(schedule, [ForecastYear("FY2024-25", 300000.0, 20000.0)], **{flag: 1.5})
+
+
+def test_forecast_schedule_allows_a_negative_ebitda_margin_override():
+    """Unlike the other three margins, ebitda_margin is deliberately
+    unbounded below -- model.revolver_scenario already relies on this to
+    model an operating-loss shock (shock_ebitda_margin=-0.20, Day 8)."""
+    statements = load_historical_statements(GULFOILLUB_CSV)
+    schedule = build_schedule(statements)
+    forecasts = forecast_schedule(
+        schedule, [ForecastYear("FY2024-25", 300000.0, 20000.0)], ebitda_margin=-0.20
+    )
+    assert forecasts[0].ebitda == pytest.approx(320000.0 * -0.20)
+
+
 def test_forecast_schedule_chains_onto_day_two_revenue_forecast():
     """The real integration point: Day 2's own forecast_revenue output feeds
     straight into Day 3's forecast_schedule with no re-derivation of revenue."""

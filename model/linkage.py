@@ -87,6 +87,15 @@ from model.schedules import (
 
 DEFAULT_DIVIDEND_PAYOUT = 0.0
 DEFAULT_BALANCE_TOLERANCE = 0.01
+
+TAX_RATE_BOUNDS = (0.0, 1.0)
+DIVIDEND_PAYOUT_BOUNDS = (0.0, 1.0)
+"""Valid ranges for ``tax_rate``/``dividend_payout`` overrides (P59):
+both are fractions of pretax income/net income, so neither can honestly
+be negative or exceed 1 -- e.g. a payout of 5 (500%) would otherwise pay
+out five times net income and drive total assets and equity negative
+while the balance check still reports "passed" (the two sides still agree
+by construction; see ``ForecastLinkageYear.balance_check_passed``)."""
 """Absolute tolerance in the source data's own units (Rs. Lakh) for the
 balance-check assertion. The linkage is an exact algebraic identity when
 wired correctly (see module docstring) — this only absorbs floating-point
@@ -326,6 +335,12 @@ def forecast_linkage_from_cost_forecasts(
         raise ValueError("need at least one historical statement")
     if not cost_forecasts:
         raise ValueError("need at least one forecast year")
+    for flag, value, (lo, hi) in (
+        ("tax_rate", tax_rate, TAX_RATE_BOUNDS),
+        ("dividend_payout", dividend_payout, DIVIDEND_PAYOUT_BOUNDS),
+    ):
+        if value is not None and not (lo <= value <= hi):
+            raise ValueError(f"{flag}={value!r} is outside the allowed range [{lo}, {hi}]")
 
     historical_linkage = build_historical_linkage(statements)
     historical_debt = build_historical_debt_schedule(statements)

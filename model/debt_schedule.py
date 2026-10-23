@@ -59,6 +59,16 @@ DEFAULT_AMORTIZATION_RATE = 0.10
 DEFAULT_MAX_ITERATIONS = 50
 DEFAULT_TOLERANCE = 1e-6
 
+MIN_AMORTIZATION_RATE = 0.0
+"""Floor for an ``amortization_rate`` override (P59): a negative rate
+means debt *growing* on its own every year under a flag named for paying
+it down, the real defect P59 found (``--amort-rate -0.5``). No upper
+bound: a rate over 1 is already handled correctly and deliberately
+tested (``scheduled_amortization`` is capped at the opening balance via
+``min()`` below, see ``test_forecast_debt_schedule_amortization_never_
+exceeds_the_opening_balance``), so it is a harmless, not a degenerate,
+input."""
+
 
 @dataclass(frozen=True)
 class HistoricalDebtYear:
@@ -199,6 +209,8 @@ def forecast_debt_schedule(
         raise ValueError("need at least one forecast year")
     if len(fiscal_years) != len(cash_available_for_debt_service):
         raise ValueError("fiscal_years and cash_available_for_debt_service must be the same length")
+    if amortization_rate is not None and amortization_rate < MIN_AMORTIZATION_RATE:
+        raise ValueError(f"amortization_rate={amortization_rate!r} must be >= {MIN_AMORTIZATION_RATE}")
 
     used_amortization_rate = amortization_rate if amortization_rate is not None else DEFAULT_AMORTIZATION_RATE
     used_revolver_limit = revolver_limit if revolver_limit is not None else default_revolver_limit(historical)

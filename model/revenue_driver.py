@@ -31,6 +31,16 @@ SEGMENT_REQUIRED_COLUMNS = ["fiscal_year", "export_revenue"]
 
 FISCAL_YEAR_RE = re.compile(r"^FY(\d{4})-(\d{2})$")
 
+MIN_GROWTH_RATE = -1.0
+MAX_GROWTH_RATE = 10.0
+"""Bounds for a ``domestic_growth``/``export_growth`` override (P59). A
+segment can genuinely shrink (down to, but not past, -100%) or compound
+fast, so unlike the margin/rate overrides elsewhere in this project these
+are not floored at zero — but a generous, documented ceiling (1,000% a
+year) still catches a mistyped flag (e.g. a percentage meant as ``0.15``
+entered as ``15``) before it silently compounds into a nonsensical revenue
+forecast."""
+
 
 @dataclass(frozen=True)
 class SegmentRevenue:
@@ -154,6 +164,11 @@ def forecast_revenue(
     """
     if n_years < 1:
         raise ValueError("n_years must be >= 1")
+    for flag, value in (("domestic_growth", domestic_growth), ("export_growth", export_growth)):
+        if value is not None and not (MIN_GROWTH_RATE <= value <= MAX_GROWTH_RATE):
+            raise ValueError(
+                f"{flag}={value!r} is outside the allowed range [{MIN_GROWTH_RATE}, {MAX_GROWTH_RATE}]"
+            )
 
     d_growth = domestic_growth if domestic_growth is not None else segment_cagr(segments, "domestic_revenue")
     e_growth = export_growth if export_growth is not None else segment_cagr(segments, "export_revenue")

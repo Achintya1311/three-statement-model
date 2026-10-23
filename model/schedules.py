@@ -36,6 +36,18 @@ from model.revenue_driver import ForecastYear
 
 DEFAULT_TRAILING_YEARS = 3
 
+MARGIN_BOUNDS = (0.0, 1.0)
+"""Valid range for a ``da_margin``/``capex_margin``/``nwc_margin`` override
+(P59). None of these three can honestly be negative (a margin of revenue)
+or exceed revenue itself in this model.
+
+``ebitda_margin`` is deliberately excluded: unlike the other three, a
+negative EBITDA margin is a real scenario (an operating loss), and
+``model.revolver_scenario`` already relies on overriding it to a negative
+value (e.g. ``shock_ebitda_margin=-0.20``) to build its own documented,
+tested "severe margin shock exhausts the revolver" scenario (Day 8, P29).
+Bounding it here would break that deliberate, already-tested use."""
+
 
 @dataclass(frozen=True)
 class ScheduleYear:
@@ -122,6 +134,14 @@ def forecast_schedule(
         raise ValueError("need at least one historical schedule year")
     if not forecast_revenue:
         raise ValueError("need at least one forecast year")
+    lo, hi = MARGIN_BOUNDS
+    for flag, value in (
+        ("da_margin", da_margin),
+        ("capex_margin", capex_margin),
+        ("nwc_margin", nwc_margin),
+    ):
+        if value is not None and not (lo <= value <= hi):
+            raise ValueError(f"{flag}={value!r} is outside the allowed range [{lo}, {hi}]")
 
     used_ebitda_margin = (
         ebitda_margin if ebitda_margin is not None

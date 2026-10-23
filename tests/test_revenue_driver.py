@@ -187,6 +187,37 @@ def test_forecast_revenue_rejects_fewer_than_one_year():
         forecast_revenue(segments, 0)
 
 
+# -- forecast_revenue: growth override bounds (P59) --------------------------
+# P59's own evidence: --domestic-growth -1.5 --export-growth -1.5 produces
+# negative FY2024-25 domestic revenue (-154,124.23 lakh) instead of being
+# rejected -- a segment can shrink to zero (-100%) but not past it.
+
+
+def test_forecast_revenue_rejects_a_domestic_growth_below_negative_one():
+    segments = load_segment_revenue(GULFOILLUB_CSV, SEGMENT_CSV)
+    with pytest.raises(ValueError, match=r"domestic_growth=-1\.5 is outside the allowed range"):
+        forecast_revenue(segments, 1, domestic_growth=-1.5, export_growth=0.0)
+
+
+def test_forecast_revenue_rejects_an_export_growth_below_negative_one():
+    segments = load_segment_revenue(GULFOILLUB_CSV, SEGMENT_CSV)
+    with pytest.raises(ValueError, match=r"export_growth=-1\.5 is outside the allowed range"):
+        forecast_revenue(segments, 1, domestic_growth=0.0, export_growth=-1.5)
+
+
+def test_forecast_revenue_rejects_a_growth_override_above_the_ceiling():
+    segments = load_segment_revenue(GULFOILLUB_CSV, SEGMENT_CSV)
+    with pytest.raises(ValueError, match=r"domestic_growth=15\.0 is outside the allowed range"):
+        forecast_revenue(segments, 1, domestic_growth=15.0, export_growth=0.0)
+
+
+def test_forecast_revenue_accepts_growth_at_exactly_negative_one():
+    """-100% growth (a segment going to zero) is the boundary, not an error."""
+    segments = load_segment_revenue(GULFOILLUB_CSV, SEGMENT_CSV)
+    forecasts = forecast_revenue(segments, 1, domestic_growth=-1.0, export_growth=0.0)
+    assert forecasts[0].domestic_revenue == pytest.approx(0.0)
+
+
 def test_forecast_year_total_revenue_property():
     f = ForecastYear("FY2024-25", 100.0, 10.0)
     assert f.total_revenue == pytest.approx(110.0)

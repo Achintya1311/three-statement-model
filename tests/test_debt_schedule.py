@@ -121,6 +121,15 @@ def test_forecast_debt_schedule_amortization_never_exceeds_the_opening_balance()
     assert forecasts[0].ending_term_debt == pytest.approx(0.0)
 
 
+def test_forecast_debt_schedule_rejects_a_negative_amortization_rate():
+    """P59's own evidence: --amort-rate -0.5 makes the "Amort." column
+    negative, so term debt *grows* every year under a flag named for
+    paying it down."""
+    historical = _two_year_historical()
+    with pytest.raises(ValueError, match=r"amortization_rate=-0\.5 must be >= 0"):
+        forecast_debt_schedule(historical, ["FY2024-25"], [50000.0], amortization_rate=-0.5, circular=False)
+
+
 def test_forecast_debt_schedule_defaults_amortization_rate_when_not_overridden():
     historical = _two_year_historical()
     forecasts = forecast_debt_schedule(historical, ["FY2024-25"], [50000.0], circular=False)

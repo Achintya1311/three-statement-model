@@ -100,6 +100,31 @@ def test_forecast_full_linkage_rejects_zero_forecast_years():
         forecast_full_linkage(statements_, segments, 0)
 
 
+# -- forecast_full_linkage / forecast_linkage_from_cost_forecasts: tax_rate
+# and dividend_payout override bounds (P59). P59's own evidence:
+# --dividend-payout 5 drives total assets and equity negative
+# (FY2025-26 -73,374.52/-100,048.64) with "balance check passed" printed
+# anyway -- paying out 5x net income every year is not a real scenario.
+
+
+def test_forecast_full_linkage_rejects_a_dividend_payout_above_one():
+    statements_, segments = _real_inputs()
+    with pytest.raises(ValueError, match=r"dividend_payout=5 is outside the allowed range"):
+        forecast_full_linkage(statements_, segments, 3, dividend_payout=5)
+
+
+def test_forecast_full_linkage_rejects_a_negative_dividend_payout():
+    statements_, segments = _real_inputs()
+    with pytest.raises(ValueError, match=r"dividend_payout=-0\.1 is outside the allowed range"):
+        forecast_full_linkage(statements_, segments, 3, dividend_payout=-0.1)
+
+
+def test_forecast_full_linkage_rejects_a_tax_rate_outside_zero_one():
+    statements_, segments = _real_inputs()
+    with pytest.raises(ValueError, match=r"tax_rate=1\.5 is outside the allowed range"):
+        forecast_full_linkage(statements_, segments, 3, tax_rate=1.5)
+
+
 # -- forecast_linkage_from_cost_forecasts: Day 8 pulled this loop out of
 # forecast_full_linkage so model.revolver_scenario can drive it with a
 # per-year-different cost forecast; these check the extraction changed
