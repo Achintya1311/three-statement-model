@@ -235,6 +235,74 @@ def rank_levers(
     return rows, base_metric
 
 
+TRAILING_WINDOW_CHECK_YEARS = (5,)
+"""Extra trailing-average windows checked against the real
+``DEFAULT_TRAILING_YEARS``=3 baseline by :func:`trailing_window_robustness_check`
+(P61), alongside a full-history window derived from the data itself (see
+that function)."""
+
+
+def trailing_window_robustness_check(
+    statements,
+    segments,
+    forecast_years: int,
+    circular: bool,
+) -> dict:
+    """Rerun the Day 7 ranking and FY-final net debt/EBITDA base case at a
+    5-year and a full-history trailing-average window, instead of the real
+    ``DEFAULT_TRAILING_YEARS``=3 default, and report honestly whether either
+    the top-two lever order or the metric's sign changes (P61).
+
+    Mirrors ``reverse_dcf.grill.roic_anchor_robustness_check`` (V14, this
+    same fix phase's Day 65) in a sibling repo: a baseline at the real
+    default, one result per alternate window, and a changed/unchanged
+    verdict read off the real numbers rather than assumed. The full-history
+    window is derived from ``len(statements)`` rather than hardcoded, so it
+    always covers every historical fiscal year the fixture actually has.
+    Only the six trailing-average levers (``ebitda_margin``, ``da_margin``,
+    ``capex_margin``, ``nwc_margin``, ``tax_rate``, ``interest_rate``) can
+    move between windows at all -- ``dividend_payout``/``amortization_rate``
+    are fixed constants and ``domestic_growth``/``export_growth`` are
+    already whole-history CAGRs -- so a change here would come from one of
+    those six shifting enough to overtake the baseline's own top two.
+    """
+    full_history_years = len(statements)
+    windows = sorted({*TRAILING_WINDOW_CHECK_YEARS, full_history_years})
+
+    baseline_rows, baseline_metric = rank_levers(
+        statements, segments, forecast_years, circular, DEFAULT_TRAILING_YEARS
+    )
+    baseline_top_two = (baseline_rows[0]["name"], baseline_rows[1]["name"])
+
+    by_window: dict[int, dict] = {}
+    for window in windows:
+        rows, metric = rank_levers(statements, segments, forecast_years, circular, window)
+        top_two = (rows[0]["name"], rows[1]["name"])
+        sign_changed = (
+            metric is not None
+            and baseline_metric is not None
+            and (metric > 0) != (baseline_metric > 0)
+        )
+        by_window[window] = {
+            "top_two": top_two,
+            "base_metric": metric,
+            "ranking_changed": top_two != baseline_top_two,
+            "metric_sign_changed": sign_changed,
+        }
+
+    return {
+        "baseline_trailing_years": DEFAULT_TRAILING_YEARS,
+        "baseline_top_two": baseline_top_two,
+        "baseline_metric": baseline_metric,
+        "full_history_years": full_history_years,
+        "by_window": by_window,
+        "ranking_changes_any_window": any(r["ranking_changed"] for r in by_window.values()),
+        "metric_sign_changes_any_window": any(
+            r["metric_sign_changed"] for r in by_window.values()
+        ),
+    }
+
+
 def _dedupe(values: list[float]) -> list[float]:
     """Drop values that collide after flooring (e.g. a lever whose default
     sits at zero collapses every negative step to the same 0.0), preserving
@@ -404,6 +472,35 @@ def run(
                 f"  {LABELS[row_var]}={_fmt_pct(rv)}, {LABELS[col_var]}={_fmt_pct(cv)}: {flag}",
                 file=sys.stderr,
             )
+
+    robustness = trailing_window_robustness_check(statements, segments, forecast_years, circular)
+    print(
+        f"\ntrailing-window robustness check — ranking and {final_fy} net debt/EBITDA "
+        f"at a 5yr and a full-history ({robustness['full_history_years']}yr) trailing-average "
+        f"window, vs. the real {robustness['baseline_trailing_years']}yr default:"
+    )
+    print(f"  {robustness['baseline_trailing_years']}yr (baseline): "
+          f"top two {LABELS[robustness['baseline_top_two'][0]]}, "
+          f"{LABELS[robustness['baseline_top_two'][1]]}; "
+          f"base case {_fmt_metric(robustness['baseline_metric'])}")
+    for window, result in robustness["by_window"].items():
+        tag = "5yr" if window == 5 else f"full-history ({window}yr)"
+        verdict = []
+        if result["ranking_changed"]:
+            verdict.append("ranking CHANGED")
+        if result["metric_sign_changed"]:
+            verdict.append("metric sign CHANGED")
+        verdict_str = ", ".join(verdict) if verdict else "conclusion holds"
+        print(
+            f"  {tag}: top two {LABELS[result['top_two'][0]]}, {LABELS[result['top_two'][1]]}; "
+            f"base case {_fmt_metric(result['base_metric'])} — {verdict_str}"
+        )
+    if robustness["ranking_changes_any_window"] or robustness["metric_sign_changes_any_window"]:
+        print(
+            "\nwarning: the Day 7 headline conclusion is not robust to the trailing-average "
+            "window choice — see the robustness check above",
+            file=sys.stderr,
+        )
 
     return 0
 

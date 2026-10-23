@@ -12,6 +12,7 @@ from model.historical import load_historical_statements
 from model.linkage import ForecastLinkageYear, forecast_full_linkage
 from model.revenue_driver import load_segment_revenue
 from model.sensitivity import (
+    DEFAULT_TRAILING_YEARS,
     LEVER_ORDER,
     NO_FLOOR,
     SHOCKS,
@@ -22,6 +23,7 @@ from model.sensitivity import (
     scenario_flags,
     sensitivity_grid,
     shocked_value,
+    trailing_window_robustness_check,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -278,6 +280,100 @@ def test_sensitivity_grid_flags_a_cell_that_produces_a_financing_gap(monkeypatch
     zero_row = rows.index(0.0)
     assert all(f == "gap" for f in flags[zero_row])
     assert all(f == "" for r in flags[zero_row + 1 :] for f in r)
+
+
+# -- trailing_window_robustness_check (P61) ----------------------------------------
+
+
+def test_trailing_window_robustness_check_real_gulfoillub_conclusion_holds():
+    """P61's own motivating question: does the Day 7 ranking (dividend payout
+    #1, domestic growth #2) and the net-cash-position FY-final net debt/EBITDA
+    conclusion survive anchoring every trailing-average lever on a 5-year or
+    full-history window instead of the real default 3-year one? Checked by
+    hand first (uv run): on the real GULFOILLUB fixture it does -- both
+    windows keep the same top-two order and the same negative (net cash)
+    sign, so this pins that real result rather than assuming it."""
+    statements, segments = _real_inputs()
+    result = trailing_window_robustness_check(statements, segments, 3, True)
+    assert result["baseline_trailing_years"] == DEFAULT_TRAILING_YEARS
+    assert result["baseline_top_two"] == ("dividend_payout", "domestic_growth")
+    assert result["baseline_metric"] < 0
+    assert set(result["by_window"]) == {5, len(statements)}
+    assert result["ranking_changes_any_window"] is False
+    assert result["metric_sign_changes_any_window"] is False
+    for window_result in result["by_window"].values():
+        assert window_result["top_two"] == ("dividend_payout", "domestic_growth")
+        assert window_result["base_metric"] < 0
+
+
+def test_trailing_window_robustness_check_full_history_window_is_data_driven():
+    """The full-history window isn't a hardcoded 10 -- it's however many
+    fiscal years the real fixture actually has, so a future year added to
+    financials.csv keeps this check honest without a code change."""
+    statements, segments = _real_inputs()
+    result = trailing_window_robustness_check(statements, segments, 3, True)
+    assert len(statements) in result["by_window"]
+    assert 5 in result["by_window"]
+
+
+def test_trailing_window_robustness_check_detects_a_ranking_change(monkeypatch):
+    """Before this day, nothing recomputed the Day 7 ranking under a
+    different trailing window at all, so a window that *did* flip the
+    top-two order would have gone unreported. Proven directly by forcing
+    ``rank_levers`` to return a different top-two for the 5-year window
+    than for the baseline/full-history windows."""
+    statements, segments = _real_inputs()
+    baseline_rows = [
+        {"name": "dividend_payout", "impact": 0.30},
+        {"name": "domestic_growth", "impact": 0.20},
+    ]
+    flipped_rows = [
+        {"name": "capex_margin", "impact": 0.40},
+        {"name": "domestic_growth", "impact": 0.20},
+    ]
+
+    def fake_rank_levers(stmts, segs, forecast_years, circular, trailing_years):
+        rows = flipped_rows if trailing_years == 5 else baseline_rows
+        return rows, -1.0
+
+    monkeypatch.setattr(sensitivity, "rank_levers", fake_rank_levers)
+    result = trailing_window_robustness_check(statements, segments, 3, True)
+    assert result["ranking_changes_any_window"] is True
+    assert result["by_window"][5]["ranking_changed"] is True
+    assert result["by_window"][len(statements)]["ranking_changed"] is False
+
+
+def test_trailing_window_robustness_check_detects_a_sign_change(monkeypatch):
+    """Mirrors the ranking-change test above for the other half of the
+    headline conclusion: a window whose FY-final net debt/EBITDA flips sign
+    (net cash -> net debt, or back) must be flagged, not silently printed
+    as just a different number."""
+    statements, segments = _real_inputs()
+    baseline_rows = [
+        {"name": "dividend_payout", "impact": 0.30},
+        {"name": "domestic_growth", "impact": 0.20},
+    ]
+
+    def fake_rank_levers(stmts, segs, forecast_years, circular, trailing_years):
+        metric = 1.0 if trailing_years == 5 else -1.0
+        return baseline_rows, metric
+
+    monkeypatch.setattr(sensitivity, "rank_levers", fake_rank_levers)
+    result = trailing_window_robustness_check(statements, segments, 3, True)
+    assert result["metric_sign_changes_any_window"] is True
+    assert result["by_window"][5]["metric_sign_changed"] is True
+    assert result["by_window"][len(statements)]["metric_sign_changed"] is False
+
+
+def test_cli_prints_trailing_window_robustness_check(capsys):
+    exit_code = sensitivity.run(
+        "GULFOILLUB", GULFOILLUB_CSV, SEGMENT_CSV, forecast_years=3,
+        circular=True, trailing_years=3, steps=1,
+    )
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "trailing-window robustness" in out
+    assert "5yr" in out
 
 
 # -- CLI ---------------------------------------------------------------------------
