@@ -378,6 +378,28 @@ def test_statements_cli_run_against_the_real_fixtures(capsys):
     assert "FY2026-27" in out
 
 
+def test_statements_cli_prints_the_sebi_disclaimer(capsys):
+    exit_code = statements.run(
+        "GULFOILLUB",
+        GULFOILLUB_CSV,
+        SEGMENT_CSV,
+        forecast_years=3,
+        tax_rate=None,
+        dividend_payout=None,
+        amortization_rate=None,
+        revolver_limit=None,
+        interest_rate=None,
+        circular=True,
+        trailing_years=3,
+    )
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert (
+        "Educational research on historical data. Not investment advice. "
+        "Not a SEBI-registered research analyst." in out
+    )
+
+
 def test_statements_cli_prints_per_share_metrics(capsys):
     exit_code = statements.run(
         "GULFOILLUB",

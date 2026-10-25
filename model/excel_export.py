@@ -177,6 +177,12 @@ def _write_assumptions_sheet(
     )
     ws["A2"].font = Font(italic=True, color="FF555555")
     ws.merge_cells("A2:D2")
+    ws["A3"] = (
+        "Educational research on historical data. Not investment advice. "
+        "Not a SEBI-registered research analyst."
+    )
+    ws["A3"].font = Font(italic=True, color="FF555555")
+    ws.merge_cells("A3:D3")
 
     header_row = 4
     ws.cell(row=header_row, column=1, value="Assumption").font = BOLD

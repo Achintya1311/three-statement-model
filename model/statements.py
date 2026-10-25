@@ -89,6 +89,10 @@ def run(
     used_payout = dividend_payout if dividend_payout is not None else DEFAULT_DIVIDEND_PAYOUT
     print(f"{ticker}: full linkage, {forecast_years}y forecast ({mode} interest, {used_payout:.0%} dividend payout)")
     print(
+        "Educational research on historical data. Not investment advice. "
+        "Not a SEBI-registered research analyst."
+    )
+    print(
         f"{'Fiscal year':<12} {'Revenue':>14} {'EBIT':>12} {'Interest':>10} {'Tax':>10} {'Net income':>12}"
     )
     for f in forecasts:

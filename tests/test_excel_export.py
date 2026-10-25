@@ -50,6 +50,19 @@ def test_build_workbook_has_the_three_sheets_in_order():
     assert wb.sheetnames == ["Assumptions", "Historical", "Forecast"]
 
 
+def test_assumptions_sheet_carries_the_sebi_disclaimer():
+    statements, segments = _real_inputs()
+    wb = build_workbook("GULFOILLUB", statements, segments, forecast_years=3)
+    ws = wb["Assumptions"]
+    disclaimer_text = " ".join(
+        str(ws.cell(row=row, column=1).value or "") for row in range(1, 5)
+    )
+    assert (
+        "Educational research on historical data. Not investment advice. "
+        "Not a SEBI-registered research analyst." in disclaimer_text
+    )
+
+
 def test_assumptions_sheet_resolves_the_same_defaults_as_the_cli_modules():
     statements, segments = _real_inputs()
     wb = build_workbook("GULFOILLUB", statements, segments, forecast_years=3)
