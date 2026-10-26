@@ -12,6 +12,14 @@ in `reverse-dcf-engine`'s own `research/sources.md` (a ~130-row ledger) and its
 `README.md` Findings section, not duplicated here. If a figure in
 `data/GULFOILLUB/financials.csv` is ever in doubt, that is where to check it.
 
+**Which copy (D50, 27 Oct 2026).** The file is reverse-dcf-engine's
+`data/GULFOILLUB/financials.csv` as committed in `7ce6c8b` (its Day 2
+transcription, unchanged there since), sha256
+`c24ce65998ae04951b1784ff600862fb2f0e9572c7b62a7ca1a7c46c205c0b42`.
+`tests/test_data_provenance.py` pins that hash and, when reverse-dcf-engine
+is checked out next to this repo, checks the two files are still identical,
+so a change on either side fails a test instead of drifting.
+
 ## What this data actually is, and is not
 
 The columns this file carries — `revenue`, `ebitda`,
