@@ -505,7 +505,8 @@ def to_fundamentals_contract(
     debt/EBITDA, and whether the balance check
     (:func:`assert_balance_sheet_balances`) passed for every forecast year —
     the exact shape ``NEXT_STEPS.md`` committed to before this function
-    existed. Requires at least 3 forecast years; the CLI's own
+    existed — plus, additively (D48), ``base_fiscal_year`` (the last
+    historical year) and ``fy3_fiscal_year`` (the third forecast year). Requires at least 3 forecast years; the CLI's own
     ``--forecast-years`` default already satisfies this.
     """
     if not statements:
@@ -527,5 +528,8 @@ def to_fundamentals_contract(
             "fy3_ebit_margin": fy3.ebit / fy3.revenue,
             "net_debt_ebitda_fy3": (fy3.ending_total_debt - fy3.cash) / fy3.ebitda,
             "balance_check": balance_check,
+            # D48: the fy3 figures are a forecast; name the years they span.
+            "base_fiscal_year": statements[-1].fiscal_year,
+            "fy3_fiscal_year": fy3.fiscal_year,
         }
     }

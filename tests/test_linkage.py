@@ -312,6 +312,8 @@ def test_to_fundamentals_contract_matches_the_committed_shape_on_the_real_fixtur
         "fy3_ebit_margin",
         "net_debt_ebitda_fy3",
         "balance_check",
+        "base_fiscal_year",
+        "fy3_fiscal_year",
     }
     assert fundamentals["balance_check"] == "passed"
     fy3 = forecasts[2]
@@ -321,6 +323,19 @@ def test_to_fundamentals_contract_matches_the_committed_shape_on_the_real_fixtur
     assert fundamentals["net_debt_ebitda_fy3"] == pytest.approx(
         (fy3.ending_total_debt - fy3.cash) / fy3.ebitda
     )
+
+
+def test_to_fundamentals_contract_names_its_base_and_fy3_years():
+    """D48: the fy3 figures are a forecast; the contract says which years it spans."""
+    statements_, segments = _real_inputs()
+    forecasts = forecast_full_linkage(statements_, segments, 3)
+
+    fundamentals = to_fundamentals_contract(statements_, forecasts)["fundamentals"]
+
+    assert fundamentals["base_fiscal_year"] == "FY2023-24"
+    assert fundamentals["fy3_fiscal_year"] == "FY2026-27"
+    assert fundamentals["base_fiscal_year"] == statements_[-1].fiscal_year
+    assert fundamentals["fy3_fiscal_year"] == forecasts[2].fiscal_year
 
 
 def test_to_fundamentals_contract_rejects_fewer_than_three_forecast_years():
@@ -550,6 +565,8 @@ def test_statements_cli_writes_fundamentals_contract(tmp_path, capsys):
         "fy3_ebit_margin",
         "net_debt_ebitda_fy3",
         "balance_check",
+        "base_fiscal_year",
+        "fy3_fiscal_year",
     }
     assert contract["fundamentals"]["balance_check"] == "passed"
 
