@@ -39,6 +39,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from model import DISCLAIMER
 from model.debt_schedule import (
     DEFAULT_AMORTIZATION_RATE,
     build_historical_debt_schedule,
@@ -532,6 +533,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.set_defaults(circular=True)
     args = parser.parse_args(argv)
+    print(DISCLAIMER)
 
     if args.steps < 1:
         print("--steps must be >= 1", file=sys.stderr)

@@ -17,6 +17,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from model import DISCLAIMER
 from model.excel_export import export_workbook
 from model.historical import load_historical_statements
 from model.revenue_driver import load_segment_revenue
@@ -122,6 +123,7 @@ def main(argv: list[str] | None = None) -> int:
         help="years of history to average for any rate/margin not overridden",
     )
     args = parser.parse_args(argv)
+    print(DISCLAIMER)
 
     financials_path = Path(args.financials) if args.financials else default_financials_path(args.ticker)
     segment_path = Path(args.segments) if args.segments else default_segment_path(args.ticker)

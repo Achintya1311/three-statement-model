@@ -16,6 +16,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from model import DISCLAIMER
 from model.historical import load_historical_statements
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -58,6 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ticker", required=True, help="e.g. GULFOILLUB (no yfinance suffix)")
     parser.add_argument("--data", default=None, help="defaults to data/<ticker>/financials.csv")
     args = parser.parse_args(argv)
+    print(DISCLAIMER)
 
     data_path = Path(args.data) if args.data else default_data_path(args.ticker)
     return run(args.ticker, data_path)

@@ -44,6 +44,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
+from model import DISCLAIMER
 from model.debt_schedule import (
     DEFAULT_AMORTIZATION_RATE,
     build_historical_debt_schedule,
@@ -177,10 +178,7 @@ def _write_assumptions_sheet(
     )
     ws["A2"].font = Font(italic=True, color="FF555555")
     ws.merge_cells("A2:D2")
-    ws["A3"] = (
-        "Educational research on historical data. Not investment advice. "
-        "Not a SEBI-registered research analyst."
-    )
+    ws["A3"] = DISCLAIMER
     ws["A3"].font = Font(italic=True, color="FF555555")
     ws.merge_cells("A3:D3")
 

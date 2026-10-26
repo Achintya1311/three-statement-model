@@ -18,6 +18,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from model import DISCLAIMER
 from model.revenue_driver import forecast_revenue, load_segment_revenue, segment_cagr
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -91,6 +92,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--domestic-growth", type=float, default=None, help="override domestic CAGR, e.g. 0.10")
     parser.add_argument("--export-growth", type=float, default=None, help="override export CAGR, e.g. 0.15")
     args = parser.parse_args(argv)
+    print(DISCLAIMER)
 
     financials_path = Path(args.financials) if args.financials else default_financials_path(args.ticker)
     segment_path = Path(args.segments) if args.segments else default_segment_path(args.ticker)

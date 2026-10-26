@@ -18,6 +18,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from model import DISCLAIMER
 from model.historical import load_historical_statements
 from model.revenue_driver import forecast_revenue, load_segment_revenue
 from model.schedules import DEFAULT_TRAILING_YEARS, build_schedule, forecast_schedule
@@ -119,6 +120,7 @@ def main(argv: list[str] | None = None) -> int:
         help="years of history to average for any margin not overridden",
     )
     args = parser.parse_args(argv)
+    print(DISCLAIMER)
 
     financials_path = Path(args.financials) if args.financials else default_financials_path(args.ticker)
     segment_path = Path(args.segments) if args.segments else default_segment_path(args.ticker)

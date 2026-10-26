@@ -19,6 +19,7 @@ import json
 import sys
 from pathlib import Path
 
+from model import DISCLAIMER
 from model.historical import load_historical_statements
 from model.linkage import (
     DEFAULT_BALANCE_TOLERANCE,
@@ -85,13 +86,10 @@ def run(
         trailing_years=trailing_years,
     )
 
+    print(DISCLAIMER)
     mode = "average-balance, iterative" if circular else "opening-balance, single-pass"
     used_payout = dividend_payout if dividend_payout is not None else DEFAULT_DIVIDEND_PAYOUT
     print(f"{ticker}: full linkage, {forecast_years}y forecast ({mode} interest, {used_payout:.0%} dividend payout)")
-    print(
-        "Educational research on historical data. Not investment advice. "
-        "Not a SEBI-registered research analyst."
-    )
     print(
         f"{'Fiscal year':<12} {'Revenue':>14} {'EBIT':>12} {'Interest':>10} {'Tax':>10} {'Net income':>12}"
     )

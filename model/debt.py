@@ -25,6 +25,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from model import DISCLAIMER
 from model.debt_schedule import (
     DEFAULT_AMORTIZATION_RATE,
     build_historical_debt_schedule,
@@ -162,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.set_defaults(circular=True)
     args = parser.parse_args(argv)
+    print(DISCLAIMER)
 
     financials_path = Path(args.financials) if args.financials else default_financials_path(args.ticker)
     segment_path = Path(args.segments) if args.segments else default_segment_path(args.ticker)

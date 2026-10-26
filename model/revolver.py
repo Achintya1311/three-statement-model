@@ -20,6 +20,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from model import DISCLAIMER
 from model.historical import load_historical_statements
 from model.linkage import assert_balance_sheet_balances
 from model.revenue_driver import load_segment_revenue
@@ -148,6 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.set_defaults(circular=True)
     args = parser.parse_args(argv)
+    print(DISCLAIMER)
 
     financials_path = Path(args.financials) if args.financials else default_financials_path(args.ticker)
     segment_path = Path(args.segments) if args.segments else default_segment_path(args.ticker)
