@@ -48,6 +48,7 @@ from model.debt_schedule import (
 from model.historical import load_historical_statements
 from model.linkage import (
     DEFAULT_DIVIDEND_PAYOUT,
+    DIVIDEND_PAYOUT_BOUNDS,
     ForecastLinkageYear,
     build_historical_linkage,
     default_tax_rate,
@@ -112,12 +113,17 @@ def default_segment_path(ticker: str) -> Path:
 
 
 def resolve_base_assumptions(
-    statements, segments, trailing_years: int = DEFAULT_TRAILING_YEARS
+    statements,
+    segments,
+    trailing_years: int = DEFAULT_TRAILING_YEARS,
+    dividend_payout: float = DEFAULT_DIVIDEND_PAYOUT,
 ) -> dict[str, float]:
     """Every lever's real default value — the same resolution
     ``forecast_full_linkage`` performs internally for an omitted override,
     exposed here so each lever is shocked from its actual default rather
-    than an arbitrary baseline."""
+    than an arbitrary baseline. The one exception is ``dividend_payout``:
+    there is no dividend data, so its base is an assumption (0% by default)
+    that the caller can state instead (P96)."""
     historical_linkage = build_historical_linkage(statements)
     historical_debt = build_historical_debt_schedule(statements)
     schedule = build_schedule(statements)
@@ -130,7 +136,7 @@ def resolve_base_assumptions(
         "nwc_margin": trailing_average([h.nwc_margin for h in schedule], trailing_years),
         "tax_rate": default_tax_rate(historical_linkage, trailing_years),
         "interest_rate": default_interest_rate(historical_debt, trailing_years),
-        "dividend_payout": DEFAULT_DIVIDEND_PAYOUT,
+        "dividend_payout": dividend_payout,
         "amortization_rate": DEFAULT_AMORTIZATION_RATE,
     }
 
@@ -177,14 +183,17 @@ def run_scenario(
     overrides: dict[str, float],
     circular: bool,
     trailing_years: int,
+    dividend_payout: float = DEFAULT_DIVIDEND_PAYOUT,
 ) -> list[ForecastLinkageYear]:
+    """One forecast with ``overrides`` applied; the payout is held at
+    ``dividend_payout`` unless ``overrides`` shocks it (P96)."""
     return forecast_full_linkage(
         statements,
         segments,
         forecast_years,
         circular=circular,
         trailing_years=trailing_years,
-        **overrides,
+        **{"dividend_payout": dividend_payout, **overrides},
     )
 
 
@@ -194,13 +203,14 @@ def rank_levers(
     forecast_years: int,
     circular: bool,
     trailing_years: int,
+    dividend_payout: float = DEFAULT_DIVIDEND_PAYOUT,
 ) -> tuple[list[dict], float | None]:
     """One row per lever, sorted by impact (descending): the larger of the
     two absolute swings in FY-final net debt/EBITDA from shocking that lever
     up or down, every other lever held at its default."""
-    base_values = resolve_base_assumptions(statements, segments, trailing_years)
+    base_values = resolve_base_assumptions(statements, segments, trailing_years, dividend_payout)
     base_metric = net_debt_to_ebitda(
-        run_scenario(statements, segments, forecast_years, {}, circular, trailing_years)[-1]
+        run_scenario(statements, segments, forecast_years, {}, circular, trailing_years, dividend_payout)[-1]
     )
 
     rows = []
@@ -208,8 +218,12 @@ def rank_levers(
         base = base_values[name]
         down_val = shocked_value(name, base, -1)
         up_val = shocked_value(name, base, +1)
-        down_forecasts = run_scenario(statements, segments, forecast_years, {name: down_val}, circular, trailing_years)
-        up_forecasts = run_scenario(statements, segments, forecast_years, {name: up_val}, circular, trailing_years)
+        down_forecasts = run_scenario(
+            statements, segments, forecast_years, {name: down_val}, circular, trailing_years, dividend_payout
+        )
+        up_forecasts = run_scenario(
+            statements, segments, forecast_years, {name: up_val}, circular, trailing_years, dividend_payout
+        )
         down_metric = net_debt_to_ebitda(down_forecasts[-1])
         up_metric = net_debt_to_ebitda(up_forecasts[-1])
         swings = [
@@ -248,6 +262,7 @@ def trailing_window_robustness_check(
     segments,
     forecast_years: int,
     circular: bool,
+    dividend_payout: float = DEFAULT_DIVIDEND_PAYOUT,
 ) -> dict:
     """Rerun the Day 7 ranking and FY-final net debt/EBITDA base case at a
     5-year and a full-history trailing-average window, instead of the real
@@ -271,13 +286,15 @@ def trailing_window_robustness_check(
     windows = sorted({*TRAILING_WINDOW_CHECK_YEARS, full_history_years})
 
     baseline_rows, baseline_metric = rank_levers(
-        statements, segments, forecast_years, circular, DEFAULT_TRAILING_YEARS
+        statements, segments, forecast_years, circular, DEFAULT_TRAILING_YEARS, dividend_payout=dividend_payout
     )
     baseline_top_two = (baseline_rows[0]["name"], baseline_rows[1]["name"])
 
     by_window: dict[int, dict] = {}
     for window in windows:
-        rows, metric = rank_levers(statements, segments, forecast_years, circular, window)
+        rows, metric = rank_levers(
+            statements, segments, forecast_years, circular, window, dividend_payout=dividend_payout
+        )
         top_two = (rows[0]["name"], rows[1]["name"])
         sign_changed = (
             metric is not None
@@ -327,6 +344,7 @@ def sensitivity_grid(
     circular: bool,
     trailing_years: int,
     steps: int = 2,
+    dividend_payout: float = DEFAULT_DIVIDEND_PAYOUT,
 ) -> tuple[list[float], list[float], list[list[float | None]], list[list[str]]]:
     """FY-final net debt/EBITDA over every combination of ``row_var`` and
     ``col_var`` at up to ``2 * steps + 1`` values each side of their own
@@ -337,7 +355,7 @@ def sensitivity_grid(
     ``scenario_flags`` strings (P60), one per cell, so a caller can tell a
     cell that isn't fully resolved (a financing gap or a convergence
     failure somewhere in that cell's own forecast) from one that is."""
-    base_values = resolve_base_assumptions(statements, segments, trailing_years)
+    base_values = resolve_base_assumptions(statements, segments, trailing_years, dividend_payout)
     row_values = [
         base_values[row_var] + step * SHOCKS[row_var] for step in range(-steps, steps + 1)
     ]
@@ -358,7 +376,13 @@ def sensitivity_grid(
         flag_row = []
         for cv in col_values:
             forecasts = run_scenario(
-                statements, segments, forecast_years, {row_var: rv, col_var: cv}, circular, trailing_years
+                statements,
+                segments,
+                forecast_years,
+                {row_var: rv, col_var: cv},
+                circular,
+                trailing_years,
+                dividend_payout,
             )
             row.append(net_debt_to_ebitda(forecasts[-1]))
             flag_row.append(scenario_flags(forecasts))
@@ -383,6 +407,7 @@ def run(
     circular: bool,
     trailing_years: int,
     steps: int,
+    dividend_payout: float | None = None,
 ) -> int:
     if not financials_path.exists():
         print(f"no financials data at {financials_path}", file=sys.stderr)
@@ -402,8 +427,14 @@ def run(
         return 1
 
     mode = "circular" if circular else "non-circular"
-    rows, base_metric = rank_levers(statements, segments, forecast_years, circular, trailing_years)
-    base_forecasts = run_scenario(statements, segments, forecast_years, {}, circular, trailing_years)
+    if dividend_payout is None:
+        payout = DEFAULT_DIVIDEND_PAYOUT
+        payout_note = f"payout base {payout:.2%} (assumed: no dividend data in financials.csv)"
+    else:
+        payout = dividend_payout
+        payout_note = f"payout base {payout:.2%} (set by --dividend-payout)"
+    rows, base_metric = rank_levers(statements, segments, forecast_years, circular, trailing_years, payout)
+    base_forecasts = run_scenario(statements, segments, forecast_years, {}, circular, trailing_years, payout)
     final_fy = base_forecasts[-1].fiscal_year
 
     if any(f.unmet_financing_gap > 0 for f in base_forecasts):
@@ -418,7 +449,7 @@ def run(
         f"{ticker}: Day 7 sensitivity ranking — impact on {final_fy} net debt/EBITDA "
         f"({forecast_years}y forecast, {mode} interest)"
     )
-    print(f"base case: {_fmt_metric(base_metric)}\n")
+    print(f"base case: {_fmt_metric(base_metric)}; {payout_note}\n")
     print(f"{'Rank':<5}{'Assumption':<26}{'Base':>10}{'Down':>12}{'-> metric':>12}{'Up':>12}{'-> metric':>12}{'Impact':>10}")
     for i, row in enumerate(rows, start=1):
         print(
@@ -446,7 +477,7 @@ def run(
 
     row_var, col_var = top_two
     row_values, col_values, table, grid_flags = sensitivity_grid(
-        statements, segments, forecast_years, row_var, col_var, circular, trailing_years, steps
+        statements, segments, forecast_years, row_var, col_var, circular, trailing_years, steps, payout
     )
     print(
         f"\n{final_fy} net debt/EBITDA — {LABELS[row_var]} (rows) x {LABELS[col_var]} (columns)"
@@ -474,7 +505,7 @@ def run(
                 file=sys.stderr,
             )
 
-    robustness = trailing_window_robustness_check(statements, segments, forecast_years, circular)
+    robustness = trailing_window_robustness_check(statements, segments, forecast_years, circular, payout)
     print(
         f"\ntrailing-window robustness check — ranking and {final_fy} net debt/EBITDA "
         f"at a 5yr and a full-history ({robustness['full_history_years']}yr) trailing-average "
@@ -531,9 +562,21 @@ def main(argv: list[str] | None = None) -> int:
         action="store_false",
         help="opening-balance interest, single pass, no iteration",
     )
+    parser.add_argument(
+        "--dividend-payout",
+        type=float,
+        default=None,
+        help="payout base for every scenario (P96); there is no dividend data, so the default 0%% is an assumption",
+    )
     parser.set_defaults(circular=True)
     args = parser.parse_args(argv)
     print(DISCLAIMER)
+
+    if args.dividend_payout is not None:
+        low, high = DIVIDEND_PAYOUT_BOUNDS
+        if not low <= args.dividend_payout <= high:
+            print(f"--dividend-payout must be between {low} and {high}", file=sys.stderr)
+            return 1
 
     if args.steps < 1:
         print("--steps must be >= 1", file=sys.stderr)
@@ -549,6 +592,7 @@ def main(argv: list[str] | None = None) -> int:
         args.circular,
         args.trailing_years,
         args.steps,
+        args.dividend_payout,
     )
 
 

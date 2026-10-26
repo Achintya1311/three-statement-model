@@ -332,7 +332,7 @@ def test_trailing_window_robustness_check_detects_a_ranking_change(monkeypatch):
         {"name": "domestic_growth", "impact": 0.20},
     ]
 
-    def fake_rank_levers(stmts, segs, forecast_years, circular, trailing_years):
+    def fake_rank_levers(stmts, segs, forecast_years, circular, trailing_years, dividend_payout=0.0):
         rows = flipped_rows if trailing_years == 5 else baseline_rows
         return rows, -1.0
 
@@ -354,7 +354,7 @@ def test_trailing_window_robustness_check_detects_a_sign_change(monkeypatch):
         {"name": "domestic_growth", "impact": 0.20},
     ]
 
-    def fake_rank_levers(stmts, segs, forecast_years, circular, trailing_years):
+    def fake_rank_levers(stmts, segs, forecast_years, circular, trailing_years, dividend_payout=0.0):
         metric = 1.0 if trailing_years == 5 else -1.0
         return baseline_rows, metric
 
@@ -421,3 +421,58 @@ def test_main_rejects_non_positive_steps(capsys):
     exit_code = sensitivity.main(["--ticker", "GULFOILLUB", "--steps", "0"])
     assert exit_code == 1
     assert "--steps" in capsys.readouterr().err
+
+
+# -- P96: the payout base is an assumption, so a reader can set it --
+
+
+def test_resolve_base_assumptions_takes_a_payout_base():
+    statements, segments = _real_inputs()
+    assert resolve_base_assumptions(statements, segments)["dividend_payout"] == 0.0
+    assert resolve_base_assumptions(statements, segments, dividend_payout=0.5)["dividend_payout"] == 0.5
+
+
+def test_rank_levers_base_metric_moves_with_the_payout_base():
+    statements, segments = _real_inputs()
+    _, at_zero = rank_levers(statements, segments, 3, True, DEFAULT_TRAILING_YEARS)
+    rows, at_half = rank_levers(statements, segments, 3, True, DEFAULT_TRAILING_YEARS, dividend_payout=0.5)
+    assert at_half > at_zero  # paying out half of net income leaves less net cash
+    explicit = forecast_full_linkage(statements, segments, 3, dividend_payout=0.5)
+    assert at_half == pytest.approx(net_debt_to_ebitda(explicit[-1]))
+    payout = next(r for r in rows if r["name"] == "dividend_payout")
+    assert payout["base"] == 0.5
+    assert payout["down_value"] == pytest.approx(0.3)  # a real down shock now, not a floored no-op
+    # Every other lever is shocked with the payout held at the stated base.
+    capex = next(r for r in rows if r["name"] == "capex_margin")
+    shocked = forecast_full_linkage(statements, segments, 3, dividend_payout=0.5, capex_margin=capex["up_value"])
+    assert capex["up_metric"] == pytest.approx(net_debt_to_ebitda(shocked[-1]))
+
+
+def test_sensitivity_grid_uses_the_payout_base():
+    statements, segments = _real_inputs()
+    rows, cols, table, _ = sensitivity_grid(
+        statements, segments, 3, "dividend_payout", "domestic_growth", True, DEFAULT_TRAILING_YEARS,
+        steps=1, dividend_payout=0.5,
+    )
+    assert rows == pytest.approx([0.3, 0.5, 0.7])
+    _, base = rank_levers(statements, segments, 3, True, DEFAULT_TRAILING_YEARS, dividend_payout=0.5)
+    assert table[1][1] == pytest.approx(base)
+
+
+def test_cli_dividend_payout_sets_the_base(capsys):
+    assert sensitivity.main(["--ticker", "GULFOILLUB", "--dividend-payout", "0.5"]) == 0
+    out = capsys.readouterr().out
+    assert "payout base 50.00% (set by --dividend-payout)" in out
+    assert "base case: -0.85x" in out
+
+
+def test_cli_default_says_the_payout_base_is_an_assumption(capsys):
+    assert sensitivity.main(["--ticker", "GULFOILLUB"]) == 0
+    out = capsys.readouterr().out
+    assert "payout base 0.00% (assumed: no dividend data in financials.csv)" in out
+
+
+@pytest.mark.parametrize("bad", ["-0.1", "1.5"])
+def test_cli_rejects_a_payout_base_out_of_bounds(bad, capsys):
+    assert sensitivity.main(["--ticker", "GULFOILLUB", "--dividend-payout", bad]) == 1
+    assert "--dividend-payout" in capsys.readouterr().err
