@@ -10,7 +10,7 @@ Educational research on historical data. Not investment advice. Not a SEBI-regis
 
 A fully linked income statement, balance sheet and cash flow forecast built from the filings with no template underneath, where the balance check is a test that fails loudly.
 
-**Status:** Complete (Oct 2026). Part of a nine-repo equity research pipeline; [STOCKSTALKER](https://github.com/Achintya1311/STOCKSTALKER) is the front door.
+**Status:** Complete (Oct 2026). Part of an eight-repo equity research pipeline (STOCKSTALKER plus seven research repos; the separate stockstalker-lab is not counted); [STOCKSTALKER](https://github.com/Achintya1311/STOCKSTALKER) is the front door.
 
 *Educational research on historical data. Not investment advice. Not a SEBI-registered research analyst.*
 
@@ -205,7 +205,7 @@ The worked numbers, `python -m model.revolver --ticker GULFOILLUB` (4y forecast,
 
 ## Where this sits
 
-Part of a nine-repo research pipeline. Stock Stalker screens the NSE universe; this repo publishes a versioned artifact it reads back, written by `model.linkage.to_fundamentals_contract` and wired to `python -m model.statements --contract <path>` (requires `--forecast-years >= 3` and a passing balance check):
+Part of an eight-repo research pipeline. Stock Stalker screens the NSE universe; this repo publishes a versioned artifact it reads back, written by `model.linkage.to_fundamentals_contract` and wired to `python -m model.statements --contract <path>` (requires `--forecast-years >= 3` and a passing balance check):
 
 ```json
 {
