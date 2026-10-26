@@ -17,6 +17,11 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - name: Install LibreOffice Calc
+        # P77: tests/test_excel_recalc.py recalculates the exported workbook
+        # headless and compares it with model.linkage (skipped without soffice).
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-calc
+
       - name: Install
         # Editable install, so bare `pytest` can import the package (P8: `python
         # -m pytest` would mask a broken package by putting CWD on sys.path).

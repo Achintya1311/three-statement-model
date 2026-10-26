@@ -8,10 +8,9 @@ chain of references actually reproduce ``model.statements --no-circular``'s
 own numbers) was verified by hand: the workbook was recalculated with
 LibreOffice headless and the Forecast sheet's PASS/numbers matched
 ``python -m model.statements --ticker GULFOILLUB --no-circular`` to the
-cent for all 3 real forecast years (recorded in the checkpoint, not
-re-run here — pytest has no spreadsheet engine to recalculate formulas
-with, so a unit test can only check the formula strings are wired, not
-evaluate them)."""
+cent for all 3 real forecast years. That check is now automated in
+``tests/test_excel_recalc.py`` (P77), which recalculates with LibreOffice
+headless; this file still checks only that the formula strings are wired."""
 
 from pathlib import Path
 
