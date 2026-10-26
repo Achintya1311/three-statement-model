@@ -7,9 +7,12 @@ cached values for every formula), read back with ``openpyxl`` in
 ``data_only`` mode, and the key Forecast rows are compared with
 ``model.linkage.forecast_full_linkage(..., circular=False)`` -- the only mode
 the workbook represents -- to within 0.01 (Rs Lakh). Skipped only when
-``soffice`` is not on PATH; CI installs ``libreoffice-calc`` so it runs there.
+``soffice`` is not on PATH outside CI; under CI (``CI`` set, as on GitHub
+Actions, which installs ``libreoffice-calc``) a missing ``soffice`` fails
+instead, so a green CI run proves the recalculation actually ran.
 """
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -38,7 +41,14 @@ COMPARED_ROWS = {
     "Total debt (ending balance)": "ending_total_debt",
 }
 
-pytestmark = pytest.mark.skipif(SOFFICE is None, reason="LibreOffice (soffice) not installed")
+pytestmark = pytest.mark.skipif(
+    SOFFICE is None and not os.environ.get("CI"), reason="LibreOffice (soffice) not installed"
+)
+
+
+def test_soffice_is_available_under_ci():
+    if os.environ.get("CI"):
+        assert SOFFICE is not None, "CI must install libreoffice-calc (P77)"
 
 
 def _recalculated_forecast(tmp_path: Path, forecast_years: int, **overrides) -> dict[str, list]:
