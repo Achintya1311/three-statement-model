@@ -217,10 +217,18 @@ Part of an eight-repo research pipeline. Stock Stalker screens the NSE universe;
     "net_debt_ebitda_fy3": -1.6879,
     "balance_check": "passed",
     "base_fiscal_year": "FY2023-24",
-    "fy3_fiscal_year": "FY2026-27"
+    "fy3_fiscal_year": "FY2026-27",
+    "dividend_payout": 0.0,
+    "assumed_inputs": [
+      "dividend_payout 0% (no dividend data in the financials)",
+      "amortization_rate 10%/yr (no loan schedule disclosed)",
+      "revolver_limit = peak historical total debt (no facility size disclosed)"
+    ]
   }
 }
 ```
+
+`dividend_payout` and `assumed_inputs` (P100) say what the figures rest on that no filing supplies. The payout matters most: `net_debt_ebitda_fy3` is -1.69x at the assumed 0% and -1.18x at `--dividend-payout 0.3`.
 
 These are the real numbers off the GULFOILLUB fixture's default 3-year forecast, not illustrative placeholders: FY3 is FY2026-27, forecast from FY2023-24 actuals. `net_debt_ebitda_fy3` is negative because this company's modeled FY3 cash balance exceeds total debt — a net cash, not net debt, position, which is itself worth naming rather than smoothing over: the ratio is doing its job (nothing to lever against), not misbehaving.
 

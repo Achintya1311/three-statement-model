@@ -498,7 +498,12 @@ def assert_balance_sheet_balances(
 
 
 def to_fundamentals_contract(
-    statements: list[HistoricalStatement], forecasts: list[ForecastLinkageYear]
+    statements: list[HistoricalStatement],
+    forecasts: list[ForecastLinkageYear],
+    *,
+    dividend_payout: float | None = None,
+    amortization_rate: float | None = None,
+    revolver_limit: float | None = None,
 ) -> dict:
     """The ``fundamentals`` block this repo publishes to the spine (v0.8):
     FY3 revenue CAGR off the last historical year, FY3 EBIT margin, FY3 net
@@ -508,6 +513,12 @@ def to_fundamentals_contract(
     existed — plus, additively (D48), ``base_fiscal_year`` (the last
     historical year) and ``fy3_fiscal_year`` (the third forecast year). Requires at least 3 forecast years; the CLI's own
     ``--forecast-years`` default already satisfies this.
+
+    P100: ``dividend_payout`` is the payout the forecast ran at, and
+    ``assumed_inputs`` names every input left at a default that the filings
+    do not supply (no dividend data, no loan schedule, no facility size).
+    Pass the same overrides the forecast used; an overridden input drops
+    off the list.
     """
     if not statements:
         raise ValueError("need at least one historical statement for the base-year revenue")
@@ -531,5 +542,16 @@ def to_fundamentals_contract(
             # D48: the fy3 figures are a forecast; name the years they span.
             "base_fiscal_year": statements[-1].fiscal_year,
             "fy3_fiscal_year": fy3.fiscal_year,
+            # P100: what the figures rest on that no filing supplies (additive).
+            "dividend_payout": dividend_payout if dividend_payout is not None else DEFAULT_DIVIDEND_PAYOUT,
+            "assumed_inputs": [
+                text
+                for value, text in (
+                    (dividend_payout, f"dividend_payout {DEFAULT_DIVIDEND_PAYOUT:.0%} (no dividend data in the financials)"),
+                    (amortization_rate, f"amortization_rate {DEFAULT_AMORTIZATION_RATE:.0%}/yr (no loan schedule disclosed)"),
+                    (revolver_limit, "revolver_limit = peak historical total debt (no facility size disclosed)"),
+                )
+                if value is None
+            ],
         }
     }

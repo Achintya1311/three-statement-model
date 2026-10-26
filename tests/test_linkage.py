@@ -314,6 +314,8 @@ def test_to_fundamentals_contract_matches_the_committed_shape_on_the_real_fixtur
         "balance_check",
         "base_fiscal_year",
         "fy3_fiscal_year",
+        "dividend_payout",
+        "assumed_inputs",
     }
     assert fundamentals["balance_check"] == "passed"
     fy3 = forecasts[2]
@@ -567,6 +569,8 @@ def test_statements_cli_writes_fundamentals_contract(tmp_path, capsys):
         "balance_check",
         "base_fiscal_year",
         "fy3_fiscal_year",
+        "dividend_payout",
+        "assumed_inputs",
     }
     assert contract["fundamentals"]["balance_check"] == "passed"
 
@@ -583,3 +587,47 @@ def test_main_cli_rejects_contract_with_too_few_forecast_years(capsys):
     with pytest.raises(SystemExit):
         statements.main(["--ticker", "GULFOILLUB", "--forecast-years", "2", "--contract", "out.json"])
     assert "--forecast-years >= 3" in capsys.readouterr().err
+
+
+# -- Day 155 (P100): the contract names the inputs it assumed rather than sourced --
+
+
+def test_to_fundamentals_contract_names_its_assumed_inputs_at_the_defaults():
+    statements_, segments = _real_inputs()
+    forecasts = forecast_full_linkage(statements_, segments, 3)
+
+    fundamentals = to_fundamentals_contract(statements_, forecasts)["fundamentals"]
+
+    assert fundamentals["dividend_payout"] == 0.0
+    assert fundamentals["assumed_inputs"] == [
+        "dividend_payout 0% (no dividend data in the financials)",
+        "amortization_rate 10%/yr (no loan schedule disclosed)",
+        "revolver_limit = peak historical total debt (no facility size disclosed)",
+    ]
+
+
+def test_to_fundamentals_contract_drops_an_overridden_input_from_the_assumed_list():
+    statements_, segments = _real_inputs()
+    forecasts = forecast_full_linkage(statements_, segments, 3, dividend_payout=0.3, amortization_rate=0.05)
+
+    fundamentals = to_fundamentals_contract(
+        statements_, forecasts, dividend_payout=0.3, amortization_rate=0.05
+    )["fundamentals"]
+
+    assert fundamentals["dividend_payout"] == 0.3
+    assert fundamentals["assumed_inputs"] == [
+        "revolver_limit = peak historical total debt (no facility size disclosed)",
+    ]
+    assert fundamentals["net_debt_ebitda_fy3"] == pytest.approx(-1.18, abs=0.02)
+
+
+def test_statements_cli_contract_carries_the_payout_it_ran_at(tmp_path):
+    import json
+
+    from model.statements import main
+
+    out = tmp_path / "f.json"
+    assert main(["--ticker", "GULFOILLUB", "--dividend-payout", "0.3", "--contract", str(out)]) == 0
+    fundamentals = json.loads(out.read_text())["fundamentals"]
+    assert fundamentals["dividend_payout"] == 0.3
+    assert not any(a.startswith("dividend_payout") for a in fundamentals["assumed_inputs"])

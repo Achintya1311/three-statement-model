@@ -148,7 +148,13 @@ def run(
     print("\nbalance check passed for every forecast year: assets = liabilities + equity")
 
     if contract_path is not None:
-        contract = to_fundamentals_contract(statements, forecasts)
+        contract = to_fundamentals_contract(
+            statements,
+            forecasts,
+            dividend_payout=dividend_payout,
+            amortization_rate=amortization_rate,
+            revolver_limit=revolver_limit,
+        )
         contract_path.parent.mkdir(parents=True, exist_ok=True)
         contract_path.write_text(json.dumps(contract, indent=2) + "\n")
         print(f"\nwrote fundamentals contract to {contract_path}")
