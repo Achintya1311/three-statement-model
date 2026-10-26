@@ -39,10 +39,10 @@ statement extract. In particular:
   `depreciation_amortization` (a non-cash add-back), not the working-capital
   movement, financing activity, or dividend lines a complete CFS needs.
 
-Day 5's full linkage and balance-check assertion will need a second
-transcription pass against the source annual reports for the missing
-balance-sheet and cash-flow granularity — flagged now, in Limitations, rather
-than discovered as a blocker on Day 5.
+Day 1 flagged that Day 5's balance check would need this granularity. Day 5
+did not add a second transcription pass: it used the documented approximation
+`equity_and_other_liabilities = total_assets - total_debt` instead (README,
+Day 5 Findings and Limitations).
 
 ## Day 2 — revenue driver sourcing (2026-10-11)
 
@@ -136,7 +136,16 @@ ledger above.
 | FY2022-23 | 18,193.02 | Annual Report 2023-24 (comparative column) | 217 |
 | FY2023-24 | 20,161.22 | Annual Report 2023-24 | 217 |
 
-Both annual reports fetched directly from Gulf Oil's own investor-relations
+**Vintage (D52).** FY2018-19, FY2020-21 and FY2022-23 come from the next
+year's comparative column; the other seven years from their own report.
+`financials.csv` (reverse-dcf-engine's ledger) takes FY2020-21 from the
+FY2020-21 report itself, and the FY2022-23 report exists, so for those two
+years the domestic residual nets a possibly restated export figure against an
+originally reported total. The reason given below covers FY2018-19 only. The
+India figures used to cross-check the residual were read by hand and are not
+committed (D51).
+
+The annual reports were fetched directly from Gulf Oil's own investor-relations
 archive (`assets.gulfoilltd.com`), reachable today without the egress block
 the first sourcing pass of this data hit back on 2026-09-10/11 (see above) —
 re-checked before use rather than assumed. FY2018-19 and FY2020-21 are read

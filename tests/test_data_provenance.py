@@ -40,3 +40,31 @@ def test_financials_match_reverse_dcf_engine_when_checked_out():
     assert FINANCIALS.read_bytes() == SIBLING.read_bytes(), (
         "reverse-dcf-engine's financials.csv has changed; re-copy it and update the pin"
     )
+
+
+# -- Day 156 (D51, D52, P101): the provenance text says what was and was not checked --
+
+
+def test_readme_does_not_call_the_segment_reconciliation_a_check():
+    readme = (ROOT / "README.md").read_text()
+    assert "the core correctness check" not in readme
+    assert "domestic + export equals total by construction" in readme
+    assert "India figures were checked by hand and are not committed" in readme
+
+
+def test_readme_names_the_export_ledger_vintages():
+    readme = (ROOT / "README.md").read_text()
+    assert "comparative column of the following year's annual report" in readme
+
+
+def test_sources_note_has_no_stale_lines():
+    note = (ROOT / "research" / "sources.md").read_text()
+    assert "will need a second\ntranscription pass" not in note
+    assert "Both annual reports fetched" not in note
+    assert "**Vintage (D52).**" in note
+
+
+def test_readme_says_the_workbook_is_generated_not_committed():
+    chart_line = next(line for line in (ROOT / "README.md").read_text().splitlines() if line.startswith("**Chart:**"))
+    assert "not committed" in chart_line
+    assert "python -m model.build" in chart_line
