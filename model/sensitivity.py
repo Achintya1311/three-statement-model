@@ -75,7 +75,8 @@ LEVER_ORDER = [
 LABELS = {
     "domestic_growth": "Domestic revenue growth",
     "export_growth": "Export revenue growth",
-    "ebitda_margin": "EBITDA margin",
+    # P123: EBIT is PBT + finance costs, so this margin carries other (treasury) income.
+    "ebitda_margin": "EBITDA margin (incl. other income)",
     "da_margin": "D&A margin",
     "capex_margin": "Capex margin",
     "nwc_margin": "NWC margin",
@@ -450,10 +451,10 @@ def run(
         f"({forecast_years}y forecast, {mode} interest)"
     )
     print(f"base case: {_fmt_metric(base_metric)}; {payout_note}\n")
-    print(f"{'Rank':<5}{'Assumption':<26}{'Base':>10}{'Down':>12}{'-> metric':>12}{'Up':>12}{'-> metric':>12}{'Impact':>10}")
+    print(f"{'Rank':<5}{'Assumption':<36}{'Base':>10}{'Down':>12}{'-> metric':>12}{'Up':>12}{'-> metric':>12}{'Impact':>10}")
     for i, row in enumerate(rows, start=1):
         print(
-            f"{i:<5}{LABELS[row['name']]:<26}{_fmt_pct(row['base']):>10}"
+            f"{i:<5}{LABELS[row['name']]:<36}{_fmt_pct(row['base']):>10}"
             f"{_fmt_pct(row['down_value']):>12}{_fmt_metric(row['down_metric']):>12}"
             f"{_fmt_pct(row['up_value']):>12}{_fmt_metric(row['up_metric']):>12}"
             f"{row['impact']:>10.2f}"
