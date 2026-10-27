@@ -16,7 +16,7 @@ A fully linked income statement, balance sheet and cash flow forecast built from
 
 ## What this is
 
-Revenue is built from operating drivers rather than a growth percentage. Debt carries a real schedule with mandatory amortisation, a revolver and interest on average debt behind an explicit circularity toggle.
+Revenue is a two-segment growth build: domestic and export revenue each compound at their own historical CAGR (FY2014-15 to FY2023-24 by default), not one blended top-line percentage. The company discloses no sales volumes, so a units × price build is not possible from the filings. Debt carries a real schedule with mandatory amortisation, a revolver and interest on average debt behind an explicit circularity toggle.
 
 Exports to Excel with live formulas and assumptions in one marked block, because a workbook of pasted values cannot be interrogated.
 
