@@ -25,6 +25,7 @@ from model.linkage import (
     DEFAULT_BALANCE_TOLERANCE,
     DEFAULT_DIVIDEND_PAYOUT,
     assert_balance_sheet_balances,
+    backcast_other_assets_roll,
     forecast_full_linkage,
     to_fundamentals_contract,
 )
@@ -55,6 +56,7 @@ def run(
     circular: bool,
     trailing_years: int,
     contract_path: Path | None = None,
+    backcast: bool = False,
 ) -> int:
     if not financials_path.exists():
         print(f"no financials data at {financials_path}", file=sys.stderr)
@@ -147,6 +149,9 @@ def run(
 
     print("\nbalance check passed for every forecast year: assets = liabilities + equity")
 
+    if backcast:
+        _print_backcast(statements)
+
     if contract_path is not None:
         contract = to_fundamentals_contract(
             statements,
@@ -160,6 +165,14 @@ def run(
         print(f"\nwrote fundamentals contract to {contract_path}")
 
     return 0
+
+
+def _print_backcast(statements) -> None:
+    print("\nother-assets roll back-cast (P122): the forecast moves other_assets by capex - D&A only")
+    print(f"{'Fiscal year':<12}{'Actual change':>16}{'capex - D&A':>14}{'Residual':>14}")
+    for r in backcast_other_assets_roll(statements):
+        print(f"{r.fiscal_year:<12}{r.actual_change:>16,.0f}{r.rule_change:>14,.0f}{r.residual:>14,.0f}")
+    print("(₹ lakh; a positive residual is growth the rule does not carry forward, so the forecast books it as cash)")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -201,6 +214,11 @@ def main(argv: list[str] | None = None) -> int:
         "JSON to this path, for the spine to read as a file -- never as a Python import. Requires "
         "--forecast-years >= 3 and a passing balance check.",
     )
+    parser.add_argument(
+        "--backcast-other-assets",
+        action="store_true",
+        help="also print the other-assets roll rule applied to each historical year (P122)",
+    )
     args = parser.parse_args(argv)
 
     if args.contract and args.forecast_years < 3:
@@ -221,6 +239,7 @@ def main(argv: list[str] | None = None) -> int:
         args.circular,
         args.trailing_years,
         Path(args.contract) if args.contract else None,
+        args.backcast_other_assets,
     )
 
 

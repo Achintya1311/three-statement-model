@@ -109,8 +109,10 @@ class HistoricalLinkageYear:
     net_working_capital: float
     other_assets: float
     """``total_assets - cash - net_working_capital`` — everything else on
-    the balance sheet (principally net fixed assets), not a plug solved
-    for after the fact: every term on the right is a real column."""
+    the balance sheet: net fixed assets, but also treasury outside cash
+    equivalents, investments and lease assets (P122: it grew far faster
+    than capex - D&A, see :func:`backcast_other_assets_roll`). Not a plug
+    solved for after the fact: every term on the right is a real column."""
     total_debt: float
     equity_and_other_liabilities: float
     """``total_assets - total_debt`` — see module docstring: folds every
@@ -149,6 +151,36 @@ def build_historical_linkage(statements: list[HistoricalStatement]) -> list[Hist
         )
     return years
 
+
+
+@dataclass(frozen=True)
+class OtherAssetsBackcastYear:
+    """P122: one historical year's ``other_assets`` change against the forecast's roll rule."""
+
+    fiscal_year: str
+    actual_change: float
+    rule_change: float
+    """``capex - D&A``, the only thing the forecast moves ``other_assets`` by."""
+    residual: float
+    """``actual_change - rule_change``: the change the rule cannot explain."""
+
+
+def backcast_other_assets_roll(statements: list[HistoricalStatement]) -> list[OtherAssetsBackcastYear]:
+    """P122 (CRITIQUES.md): apply the forecast's ``other + capex - D&A`` roll to each historical year.
+
+    ``other_assets`` is everything outside cash and NWC, so it also holds
+    treasury outside cash equivalents, investments and lease assets, none
+    of which the roll moves. A large positive residual means the forecast
+    sends into ``cash`` what history parked in ``other_assets``.
+    """
+    ordered = sorted(statements, key=lambda s: s.fiscal_year)
+    history = build_historical_linkage(ordered)
+    rows = []
+    for prior, year, s in zip(history, history[1:], ordered[1:]):
+        actual = year.other_assets - prior.other_assets
+        rule = s.cash_flow.capex - s.cash_flow.depreciation_amortization
+        rows.append(OtherAssetsBackcastYear(year.fiscal_year, actual, rule, actual - rule))
+    return rows
 
 def default_tax_rate(
     historical: list[HistoricalLinkageYear], trailing_years: int = DEFAULT_TRAILING_YEARS
