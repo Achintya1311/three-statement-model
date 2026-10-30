@@ -332,7 +332,7 @@ def test_trailing_window_robustness_check_detects_a_ranking_change(monkeypatch):
         {"name": "domestic_growth", "impact": 0.20},
     ]
 
-    def fake_rank_levers(stmts, segs, forecast_years, circular, trailing_years, dividend_payout=0.0):
+    def fake_rank_levers(stmts, segs, forecast_years, circular, trailing_years, dividend_payout=0.0, shocks=None):
         rows = flipped_rows if trailing_years == 5 else baseline_rows
         return rows, -1.0
 
@@ -354,7 +354,7 @@ def test_trailing_window_robustness_check_detects_a_sign_change(monkeypatch):
         {"name": "domestic_growth", "impact": 0.20},
     ]
 
-    def fake_rank_levers(stmts, segs, forecast_years, circular, trailing_years, dividend_payout=0.0):
+    def fake_rank_levers(stmts, segs, forecast_years, circular, trailing_years, dividend_payout=0.0, shocks=None):
         metric = 1.0 if trailing_years == 5 else -1.0
         return baseline_rows, metric
 

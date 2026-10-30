@@ -36,6 +36,7 @@ Excel's two-variable data table, without a spreadsheet.
 from __future__ import annotations
 
 import argparse
+import statistics
 import sys
 from pathlib import Path
 
@@ -99,6 +100,10 @@ SHOCKS = {
     "amortization_rate": 0.05,
 }
 
+FIXED_ONLY = {"dividend_payout", "amortization_rate"}
+"""Levers with no historical series behind them (both are assumptions), so
+``historical_shocks`` keeps their fixed ``SHOCKS`` step (P149)."""
+
 NO_FLOOR = {"domestic_growth", "export_growth"}
 """Every other lever is a rate/margin that cannot honestly go negative in
 this model (a negative capex margin, tax rate or payout ratio is not a real
@@ -142,10 +147,37 @@ def resolve_base_assumptions(
     }
 
 
-def shocked_value(name: str, base: float, direction: int) -> float:
-    """``base`` moved by one ``SHOCKS[name]`` step in ``direction`` (+1/-1),
-    floored at zero for every lever in ``NO_FLOOR``'s complement."""
-    value = base + direction * SHOCKS[name]
+def historical_shocks(statements, segments) -> dict[str, float]:
+    """One shock step per lever equal to the sample standard deviation of
+    that lever's own annual history (P149): the four margins from
+    ``build_schedule``, segment growth from year-on-year changes, the tax
+    and interest rates from their implied annual values. ``SHOCKS``' fixed
+    steps are hand-picked; this scale lets the data say how far each lever
+    has actually moved. ``FIXED_ONLY`` levers keep their fixed step."""
+    schedule = build_schedule(statements)
+    shocks = {name: statistics.stdev(getattr(h, name) for h in schedule)
+              for name in ("ebitda_margin", "da_margin", "capex_margin", "nwc_margin")}
+    for name, field in (("domestic_growth", "domestic_revenue"), ("export_growth", "export_revenue")):
+        values = [getattr(s, field) for s in segments]
+        shocks[name] = statistics.stdev(b / a - 1 for a, b in zip(values, values[1:]))
+    shocks["tax_rate"] = statistics.stdev(
+        h.effective_tax_rate for h in build_historical_linkage(statements) if h.effective_tax_rate is not None
+    )
+    shocks["interest_rate"] = statistics.stdev(
+        h.implied_interest_rate
+        for h in build_historical_debt_schedule(statements)
+        if h.implied_interest_rate is not None
+    )
+    for name in FIXED_ONLY:
+        shocks[name] = SHOCKS[name]
+    return shocks
+
+
+def shocked_value(name: str, base: float, direction: int, shocks: dict[str, float] | None = None) -> float:
+    """``base`` moved by one ``shocks[name]`` step (``SHOCKS`` by default) in
+    ``direction`` (+1/-1), floored at zero for every lever in ``NO_FLOOR``'s
+    complement."""
+    value = base + direction * (shocks or SHOCKS)[name]
     if name not in NO_FLOOR:
         value = max(0.0, value)
     return value
@@ -205,6 +237,7 @@ def rank_levers(
     circular: bool,
     trailing_years: int,
     dividend_payout: float = DEFAULT_DIVIDEND_PAYOUT,
+    shocks: dict[str, float] | None = None,
 ) -> tuple[list[dict], float | None]:
     """One row per lever, sorted by impact (descending): the larger of the
     two absolute swings in FY-final net debt/EBITDA from shocking that lever
@@ -217,8 +250,8 @@ def rank_levers(
     rows = []
     for name in LEVER_ORDER:
         base = base_values[name]
-        down_val = shocked_value(name, base, -1)
-        up_val = shocked_value(name, base, +1)
+        down_val = shocked_value(name, base, -1, shocks)
+        up_val = shocked_value(name, base, +1, shocks)
         down_forecasts = run_scenario(
             statements, segments, forecast_years, {name: down_val}, circular, trailing_years, dividend_payout
         )
@@ -264,6 +297,7 @@ def trailing_window_robustness_check(
     forecast_years: int,
     circular: bool,
     dividend_payout: float = DEFAULT_DIVIDEND_PAYOUT,
+    shocks: dict[str, float] | None = None,
 ) -> dict:
     """Rerun the Day 7 ranking and FY-final net debt/EBITDA base case at a
     5-year and a full-history trailing-average window, instead of the real
@@ -287,14 +321,16 @@ def trailing_window_robustness_check(
     windows = sorted({*TRAILING_WINDOW_CHECK_YEARS, full_history_years})
 
     baseline_rows, baseline_metric = rank_levers(
-        statements, segments, forecast_years, circular, DEFAULT_TRAILING_YEARS, dividend_payout=dividend_payout
+        statements, segments, forecast_years, circular, DEFAULT_TRAILING_YEARS, dividend_payout=dividend_payout,
+        shocks=shocks,
     )
     baseline_top_two = (baseline_rows[0]["name"], baseline_rows[1]["name"])
 
     by_window: dict[int, dict] = {}
     for window in windows:
         rows, metric = rank_levers(
-            statements, segments, forecast_years, circular, window, dividend_payout=dividend_payout
+            statements, segments, forecast_years, circular, window, dividend_payout=dividend_payout,
+            shocks=shocks,
         )
         top_two = (rows[0]["name"], rows[1]["name"])
         sign_changed = (
@@ -346,6 +382,7 @@ def sensitivity_grid(
     trailing_years: int,
     steps: int = 2,
     dividend_payout: float = DEFAULT_DIVIDEND_PAYOUT,
+    shocks: dict[str, float] | None = None,
 ) -> tuple[list[float], list[float], list[list[float | None]], list[list[str]]]:
     """FY-final net debt/EBITDA over every combination of ``row_var`` and
     ``col_var`` at up to ``2 * steps + 1`` values each side of their own
@@ -357,11 +394,12 @@ def sensitivity_grid(
     cell that isn't fully resolved (a financing gap or a convergence
     failure somewhere in that cell's own forecast) from one that is."""
     base_values = resolve_base_assumptions(statements, segments, trailing_years, dividend_payout)
+    shocks = shocks or SHOCKS
     row_values = [
-        base_values[row_var] + step * SHOCKS[row_var] for step in range(-steps, steps + 1)
+        base_values[row_var] + step * shocks[row_var] for step in range(-steps, steps + 1)
     ]
     col_values = [
-        base_values[col_var] + step * SHOCKS[col_var] for step in range(-steps, steps + 1)
+        base_values[col_var] + step * shocks[col_var] for step in range(-steps, steps + 1)
     ]
     if row_var not in NO_FLOOR:
         row_values = [max(0.0, v) for v in row_values]
@@ -409,6 +447,7 @@ def run(
     trailing_years: int,
     steps: int,
     dividend_payout: float | None = None,
+    shock_scale: str = "fixed",
 ) -> int:
     if not financials_path.exists():
         print(f"no financials data at {financials_path}", file=sys.stderr)
@@ -434,7 +473,10 @@ def run(
     else:
         payout = dividend_payout
         payout_note = f"payout base {payout:.2%} (set by --dividend-payout)"
-    rows, base_metric = rank_levers(statements, segments, forecast_years, circular, trailing_years, payout)
+    shocks = historical_shocks(statements, segments) if shock_scale == "historical" else None
+    rows, base_metric = rank_levers(
+        statements, segments, forecast_years, circular, trailing_years, payout, shocks=shocks
+    )
     base_forecasts = run_scenario(statements, segments, forecast_years, {}, circular, trailing_years, payout)
     final_fy = base_forecasts[-1].fiscal_year
 
@@ -450,7 +492,14 @@ def run(
         f"{ticker}: Day 7 sensitivity ranking — impact on {final_fy} net debt/EBITDA "
         f"({forecast_years}y forecast, {mode} interest)"
     )
-    print(f"base case: {_fmt_metric(base_metric)}; {payout_note}\n")
+    print(f"base case: {_fmt_metric(base_metric)}; {payout_note}")
+    if shocks is None:
+        print("shock scale: fixed (hand-picked steps: " + ", ".join(
+            f"{LABELS[n]} {SHOCKS[n]:.2%}" for n in LEVER_ORDER) + ")\n")
+    else:
+        print("shock scale: historical (one sample s.d. of each lever's own annual history: " + ", ".join(
+            f"{LABELS[n]} {shocks[n]:.2%}" + (" fixed step (no data)" if n in FIXED_ONLY else "")
+            for n in LEVER_ORDER) + ")\n")
     print(f"{'Rank':<5}{'Assumption':<36}{'Base':>10}{'Down':>12}{'-> metric':>12}{'Up':>12}{'-> metric':>12}{'Impact':>10}")
     for i, row in enumerate(rows, start=1):
         print(
@@ -478,7 +527,8 @@ def run(
 
     row_var, col_var = top_two
     row_values, col_values, table, grid_flags = sensitivity_grid(
-        statements, segments, forecast_years, row_var, col_var, circular, trailing_years, steps, payout
+        statements, segments, forecast_years, row_var, col_var, circular, trailing_years, steps, payout,
+        shocks=shocks,
     )
     print(
         f"\n{final_fy} net debt/EBITDA — {LABELS[row_var]} (rows) x {LABELS[col_var]} (columns)"
@@ -506,7 +556,9 @@ def run(
                 file=sys.stderr,
             )
 
-    robustness = trailing_window_robustness_check(statements, segments, forecast_years, circular, payout)
+    robustness = trailing_window_robustness_check(
+        statements, segments, forecast_years, circular, payout, shocks=shocks
+    )
     print(
         f"\ntrailing-window robustness check — ranking and {final_fy} net debt/EBITDA "
         f"at a 5yr and a full-history ({robustness['full_history_years']}yr) trailing-average "
@@ -569,6 +621,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="payout base for every scenario (P96); there is no dividend data, so the default 0%% is an assumption",
     )
+    parser.add_argument(
+        "--shock-scale",
+        choices=("fixed", "historical"),
+        default="fixed",
+        help="ranking shock size: the hand-picked SHOCKS steps (default) or one sample s.d. of each lever's own history (P149)",
+    )
     parser.set_defaults(circular=True)
     args = parser.parse_args(argv)
     print(DISCLAIMER)
@@ -594,6 +652,7 @@ def main(argv: list[str] | None = None) -> int:
         args.trailing_years,
         args.steps,
         args.dividend_payout,
+        args.shock_scale,
     )
 
 
