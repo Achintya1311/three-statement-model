@@ -259,3 +259,17 @@ def test_cli_main_default_export_path(tmp_path, monkeypatch):
     rc = build.main(["--ticker", "GULFOILLUB", "--years", "2", "--export", str(tmp_path / "x.xlsx")])
     assert rc == 0
     assert (tmp_path / "x.xlsx").exists()
+
+
+def test_every_sheet_carries_the_disclaimer_in_a_cell_and_the_print_footer():
+    """S29: a Forecast or Historical sheet printed or shared on its own still shows rule 1."""
+    from model import DISCLAIMER
+
+    statements, segments = _real_inputs()
+    wb = build_workbook("GULFOILLUB", statements, segments, forecast_years=3)
+    for ws in wb:
+        cells = [
+            c.value for row in ws.iter_rows(max_row=4) for c in row if isinstance(c.value, str)
+        ]
+        assert DISCLAIMER in cells, ws.title
+        assert ws.oddFooter.center.text == DISCLAIMER, ws.title

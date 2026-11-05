@@ -208,6 +208,8 @@ def _write_assumptions_sheet(
 def _write_historical_sheet(ws: Worksheet, ticker: str, statements: list[HistoricalStatement]) -> None:
     ws["A1"] = f"HISTORICAL — {ticker} (as ingested, read-only reference)"
     ws["A1"].font = Font(bold=True, size=14)
+    ws["A2"] = DISCLAIMER
+    ws["A2"].font = Font(italic=True, color="FF555555")
 
     columns = [
         ("fiscal_year", "Fiscal year"),
@@ -342,6 +344,9 @@ def build_workbook(
     forecast["A2"].font = Font(italic=True, color="FF555555")
     last_col_letter = get_column_letter(2 + forecast_years)
     forecast.merge_cells(f"A2:{last_col_letter}2")
+    forecast["A3"] = DISCLAIMER
+    forecast["A3"].font = Font(italic=True, color="FF555555")
+    forecast.merge_cells(f"A3:{last_col_letter}3")
 
     header_row = 4
     row_of: dict[str, int] = {}
@@ -539,6 +544,10 @@ def build_workbook(
     for col in range(2, 3 + forecast_years):
         forecast.column_dimensions[get_column_letter(col)].width = 16
     forecast.freeze_panes = "C5"
+
+    # S29: a sheet printed or saved as PDF on its own still carries rule 1.
+    for ws in wb:
+        ws.oddFooter.center.text = DISCLAIMER
 
     return wb
 
